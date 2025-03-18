@@ -79,3 +79,11 @@ assignInNamespace(".vals", backup, ns = "shinyTreelabel")
 shinyApp(singlecell_treelabel_ui(), singlecell_treelabel_server)
 ```
 
+
+```{r}
+tibble(x = 2) |>
+  ggplot(aes(y = "hello", x = x)) +
+    geom_pointrange(aes(xmin = -Inf, xmax = Inf))
+```
+
+

@@ -149,7 +149,7 @@ singlecell_treelabel_server <- function(input, output, session){
 
   ########## Differential Expression View ##########
   psce <- reactive({
-    print(paste0("Cell type selected: ", cellTypeSelector()))
+    print("Start psce")
     celltype_sym <- rlang::sym(cellTypeSelector())
     cell_sel <- .vals$col_data |>
       mutate(..sel = tl_mean_across(all_of(input$treelabelSelector), !!celltype_sym) == 1) |>
@@ -162,72 +162,91 @@ singlecell_treelabel_server <- function(input, output, session){
     }
     psce <- pseudobulk(.vals$counts, col_data = .vals$col_data,
                        pseudobulk_by = c(.vals$pseudobulk_by, extra_pseudobulk_vars), filter = cell_sel)
+    print("Done psce")
     psce
   }) |>
     # bindCache(cellTypeSelector(), input$treelabelSelector) |>
     bindEvent(cellTypeSelector(), input$treelabelSelector)
 
-  de_result <- reactive({
+  full_de_results <- reactive({
+    print("Start full_de_results")
     if(is.null(psce()) || ncol(psce()) == 0){
       return(NULL)
     }
-    meta_vals <- SummarizedExperiment::colData(psce())[[.vals$metaanalysis_over]]
-    levels <- unique(as.character(meta_vals))
-    res <- lapply(levels, \(level){
-      psce_subset <- psce()[,meta_vals == level]
-      if(ncol(psce_subset) > 0){
-        de_limma(SingleCellExperiment::logcounts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
-      }
-    })
-    names(res) <- levels
-    bind_rows(res, .id = .vals$metaanalysis_over)
+    res <- if(! is.null(.vals$metaanalysis_over)){
+      meta_vals <- SummarizedExperiment::colData(psce())[[.vals$metaanalysis_over]]
+      levels <- unique(as.character(meta_vals))
+      res <- lapply(levels, \(level){
+        psce_subset <- psce()[,meta_vals == level]
+        if(ncol(psce_subset) > 0){
+          de_limma(SingleCellExperiment::logcounts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
+        }
+      })
+      names(res) <- levels
+      bind_rows(res, .id = .vals$metaanalysis_over)
+    }else{
+      de_limma(SingleCellExperiment::logcounts(psce()), .vals$design, SummarizedExperiment::colData(psce()), .vals$contrasts)
+    }
+    print("Done full_de_results")
+    res
   }) |>
-    # bindCache(psce(), input$metaanalysisSelector) |>
-    bindEvent(psce(), input$metaanalysisSelector)
+    # bindCache(psce()) |>
+    bindEvent(psce())
 
   de_result_meta <- reactive({
-    if(is.null(de_result()) || is.null(.vals$metaanalysis_over) || length(unique(de_result()[[.vals$metaanalysis_over]])) == 1){
-      de_result()
+    print("Start de_result_meta")
+    res <- if(is.null(full_de_results()) || is.null(.vals$metaanalysis_over) || length(unique(full_de_results()[[.vals$metaanalysis_over]])) == 1){
+      full_de_results()
     }else{
-      de_result() |> # we summarize over .vals$metaanalysis_over
+      full_de_results() |> # we summarize over .vals$metaanalysis_over
         arrange(name, contrast) |>
+        mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, lfc / t_statistic))) |>
+        filter(mean(is.finite(lfc_se)) >= 0.5, .by = c(name, contrast)) |>
         summarize((\(yi, sei){
           res <- quick_metafor(yi, sei)
           tibble(lfc = res$b, lfc_se = res$se, pval = pmax(1e-22, res$pval), tau = sqrt(res$tau2))
-        })(lfc, lfc / t_statistic),
+        })(lfc ,lfc_se),
         .by = c(name, contrast)) |>
         mutate(adj_pval = p.adjust(pval, method = "BH"), .by = contrast) |>
         transmute(name, pval, adj_pval, t_statistic = lfc/lfc_se, lfc, contrast)
     }
+    print("Done de_result_meta")
+    res
   })
 
   de_result_display <- reactive({
-    meta_vals <- SummarizedExperiment::colData(psce())[[.vals$metaanalysis_over]]
-    if(is.null(de_result()) || is.null(.vals$metaanalysis_over) || length(unique(de_result()[[.vals$metaanalysis_over]])) == 1){
-      de_result()
+    if(is.null(full_de_results())){
+      NULL
+    }else if(is.null(.vals$metaanalysis_over)){
+      full_de_results()
+    }else if(input$metaanalysisSelector != "Meta-Analysis"){
+      full_de_results() |>
+        filter(!! rlang::sym(.vals$metaanalysis_over) == input$metaanalysisSelector)
     }else{
-      de_result_meta
+      de_result_meta()
     }
   })
 
   output$deTable <- DT::renderDT({
-    if(is.null(de_result_meta())){
+    print("Start renderDT deTable")
+    if(is.null(de_result_display())){
       NULL
     }else{
-      slice_min(de_result_meta(), pval, n = 50, with_ties = FALSE, by = contrast) |>
+      col_is_numeric <- vapply(de_result_display(), is.numeric, FUN.VALUE = logical(1L))
+      slice_min(de_result_display(), pval, n = 50, with_ties = FALSE, by = contrast) |>
         DT::datatable() |>
-        DT::formatSignif(c(2,3,4,5))
+        DT::formatSignif(which(col_is_numeric))
     }
   })
 
-  output$deResultsAreNULL <- reactive(is.null(de_result_meta()))
+  output$deResultsAreNULL <- reactive(is.null(de_result_display()))
   outputOptions(output, 'deResultsAreNULL', suspendWhenHidden = FALSE)
   de_gene_message <- reactiveVal()
   # Handle Chat
   chat <- ellmer::chat_ollama(system_prompt = .system_prompt, model = "llama3.3")
-  observeEvent(de_result_meta(), {
-    if(! is.null(de_result_meta())){
-      sel_genes <- de_result_meta() |>
+  observeEvent(de_result_display(), {
+    if(! is.null(de_result_display())){
+      sel_genes <- de_result_display() |>
         filter(adj_pval < 0.1) |>
         filter(contrast == contrast[1])
       up_genes <- sel_genes |> filter(lfc > 0) |>  slice_min(pval, n = 5, with_ties = FALSE) |> pull(name)
@@ -268,11 +287,12 @@ singlecell_treelabel_server <- function(input, output, session){
 
   # Handle Volcano plots
   output$deVolcano <- renderPlot({
-    de_res <- de_result_meta()
+    print("Start renderPlot deVolcano")
+    de_res <- de_result_display()
     res <- if(is.null(de_res)){
       NULL
     }else{
-      de_result_meta() |>
+      de_result_display() |>
         ggplot(aes(x = lfc, y = -log10(pval))) +
         geom_point() +
         geom_hline(data = \(x) x |> group_by(contrast) |> filter(adj_pval < 0.1) |> slice_max(pval, n = 1, with_ties = FALSE),
@@ -289,6 +309,7 @@ singlecell_treelabel_server <- function(input, output, session){
 
 
   output$selGeneExpressionStratified <- renderPlot({
+    print("Start renderPlot selGeneExpressionStratified")
     sel_gene <- input$geneSelector
     if(! is.null(psce()) && sel_gene %in% rownames(psce())){
       expr_by_sym <- rlang::sym(.vals$gene_expr_by)
@@ -304,11 +325,13 @@ singlecell_treelabel_server <- function(input, output, session){
       if(! is.null(.vals$metaanalysis_over)){
         pl <- pl + facet_wrap(vars(!! metaanalysis_over_sym))
       }
+      print("Done renderPlot selGeneExpressionStratified")
       pl
     }
   })
 
   output$selGeneExpressionContrasted <- renderPlot({
+    print("Start renderPlot selGeneExpressionContrasted")
     sel_gene <- input$geneSelector
     metaanalysis_over_sym <- if(! is.null(.vals$metaanalysis_over)){
       rlang::sym(.vals$metaanalysis_over)
@@ -316,36 +339,15 @@ singlecell_treelabel_server <- function(input, output, session){
       "Data"
     }
     if(! is.null(psce()) && sel_gene %in% rownames(psce())){
-      de_res <- if(! is.null(.vals$metaanalysis_over)){
-        meta_vals <- SummarizedExperiment::colData(psce())[[.vals$metaanalysis_over]]
-        levels <- unique(as.character(meta_vals))
-        res <- lapply(levels, \(level){
-          psce_subset <- psce()[,meta_vals == level]
-          if(ncol(psce_subset) > 0){
-            de_limma(SingleCellExperiment::logcounts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
-          }
-        })
-        names(res) <- levels
-        res <- bind_rows(res, .id = .vals$metaanalysis_over) |>
-          filter(name == sel_gene)
-        meta_res <-  res |> # we summarize over ..meta_analysis
-          arrange(name, contrast) |>
-          summarize((\(yi, sei){
-            res <- quick_metafor(yi, sei)
-            tibble(lfc = res$b, lfc_se = res$se, pval = pmax(1e-22, res$pval), tau = sqrt(res$tau2))
-          })(lfc, lfc / t_statistic),
-          .by = c(name, contrast)) |>
-          mutate(adj_pval = p.adjust(pval, method = "BH"), .by = contrast) |>
-          transmute(!!metaanalysis_over_sym := "Meta", name, pval, adj_pval, t_statistic = lfc/lfc_se, lfc, contrast)
-        bind_rows(res, meta_res) |>
+      res <- full_de_results() |> filter(name == sel_gene)
+      if(! is.null(.vals$metaanalysis_over)){
+        meta_res <- de_result_meta() |> filter(name == sel_gene) |> mutate(!!metaanalysis_over_sym := "Meta")
+        res <- bind_rows(res, meta_res) |>
           mutate(!!metaanalysis_over_sym := forcats::fct_relevel(as.factor(!!metaanalysis_over_sym), "Meta", after = 0L)) |>
           mutate(!!metaanalysis_over_sym := forcats::fct_rev(!! metaanalysis_over_sym))
-      }else{
-        de_res <- de_limma(SingleCellExperiment::logcounts(singleGeneExpr()), .vals$design, SummarizedExperiment::colData(singleGeneExpr()), .vals$contrasts) |>
-          filter(name == sel_gene)
       }
-      pl <- de_res |>
-        mutate(lfc_se = lfc / t_statistic) |>
+      pl <- res |>
+        mutate(lfc_se = ifelse(lfc == 0 & t_statistic == 0, Inf, lfc / t_statistic)) |>
         mutate(conf.low = lfc - qnorm(0.975) * lfc_se,
                conf.high = lfc + qnorm(0.975) * lfc_se) |>
         ggplot(aes(x = lfc, y = !!metaanalysis_over_sym)) +
@@ -353,9 +355,14 @@ singlecell_treelabel_server <- function(input, output, session){
           geom_pointrange(aes(xmin = conf.low, xmax = conf.high, color = !!metaanalysis_over_sym == "Meta"), show.legend = FALSE) +
           scale_color_manual(values = c("TRUE" = "red", "FALSE" = "black")) +
           facet_wrap(vars(contrast))
+      print("Done renderPlot selGeneExpressionContrasted")
       pl
     }
   })
+
+  outputOptions(output, "selGeneExpressionStratified", priority = 10)
+  outputOptions(output, "selGeneExpressionContrasted", priority = 100)
+
 
 }
 
