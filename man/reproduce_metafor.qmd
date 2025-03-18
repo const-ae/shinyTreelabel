@@ -1,0 +1,111 @@
+---
+title: "Untitled"
+---
+
+
+```{r}
+yi <-  filter(res, name == "A1BG" & contrast == r"(cond(stage = "Pre") - cond(stage = "Normal"))")$lfc
+sei <- yi / filter(res, name == "A1BG" & contrast == r"(cond(stage = "Pre") - cond(stage = "Normal"))")$t_statistic
+# yi <- rnorm(n = 10, mean = 0.5, sd = 0.3)
+# sei <- rep(0.1, times=10)
+met <- metafor::rma(yi, sei = sei)
+met$b
+met$tau2
+met$se
+met$pval
+
+n <- length(yi)
+
+tau2 <- max(0, (sum((yi - mean(yi))^2) - sum((1 - 1/n) * sei^2)) / (n-1))
+old_tau2 <- tau2
+iter <- 1
+converged <- FALSE
+ytilde <- yi - mean(yi)
+while(iter <= 10 && ! converged){
+  print(tau2)
+  wi   <- 1/(sei^2 + tau2)
+  sum_w <- sum(wi)
+  sum_w2 <- sum(wi^2)
+  sum_w3 <- sum(wi^3)
+  weighted_mean <- sum(ytilde * wi) / sum_w
+  weighted_RSS <- sum((wi * (ytilde - weighted_mean))^2)
+  adj <- (weighted_RSS - sum_w + sum_w2 / sum_w) / (sum_w2 - 2 * sum_w3 / sum_w + (sum_w2 / sum_w)^2)
+  tau2 <- max(0,tau2 + adj)
+  converged <- abs(1 - (tau2 + 0.5) / (old_tau2 + 0.5)) < 1e-6
+  old_tau2 <- tau2
+  iter <- iter + 1
+}
+sum_w <- sum(wi)
+weighted_mean <- sum(ytilde * wi) / sum_w
+b <- mean(yi) + weighted_mean
+
+se <- sqrt(1/sum_w)
+pval <- 2 * min(pnorm(b / se, lower.tail = FALSE),
+                pnorm(b / se, lower.tail = TRUE))
+
+```
+
+
+```{r}
+ytilde <- c(ymci)
+ytilde * wi - ytilde %*% W %*% X
+
+t(Ymc) %*% W - t(Ymc) %*% W %*% X %*% stXWX %*% crossprod(X, W)
+# Equiv. to t(Ymc) %*% W
+ytild * wi
+# Equiv. to t(Ymc) %*% W %*% X
+sum(ytilde * wi)
+# Equiv. to stXWX
+1/sum(wi)
+# Equiv to crossprod(X, W)
+wi
+# Putting it together
+tmp <- ytilde * wi - sum(ytilde * wi) / sum(wi) * wi
+tmp
+
+# crossprod(Ymc, PP) %*% Ymc
+sum(tmp^2)
+```
+
+```{r}
+Pr <- X %*% stXWX %*% crossprod(X,W)
+.tr(W^2) - 2 * .tr(W %*% Pr %*% W) + .tr(W %*% Pr %*% W %*% Pr)
+# Equiv. of .tr(W^2)
+sum(wi^2)
+# Equiv of .tr(W %*% Pr %*% W)
+sum(wi^3)/sum(wi)
+# Equiv of .tr(W %*% Pr %*% W %*% Pr)
+sum(wi^2)^2/sum(wi)^2
+
+# .tr(PP)
+sum(wi^2) - 2 * sum(wi^3)/sum(wi) + sum(wi^2)^2/sum(wi)^2
+```
+
+```{r}
+# .tr(P)
+sum(wi) - sum(wi^2)/sum(wi)
+
+# adj
+(sum((ytilde * wi - sum(ytilde * wi) / sum(wi) * wi)^2) - (sum(wi) - sum(wi^2)/sum(wi))) / (sum(wi^2) - 2 * sum(wi^3)/sum(wi) + sum(wi^2)^2/sum(wi)^2)
+sum_w <- sum(wi)
+sum_w2 <- sum(wi^2)
+sum_w3 <- sum(wi^3)
+weighted_mean <- sum(ytilde * wi) / sum_w
+weighted_RSS <- sum((wi * (ytilde - weighted_mean))^2)
+(weighted_RSS - sum_w + sum_w2 / sum_w) / (sum_w2 - 2 * sum_w3 / sum_w + (sum_w2 / sum_w)^2)
+
+```
+
+
+```{r}
+yi <- filter(res, name == "A1BG" & contrast == "cond(stage = \"Pre\") - cond(stage = \"Normal\")")$lfc
+sei <- yi / filter(res, name == "A1BG" & contrast == "cond(stage = \"Pre\") - cond(stage = \"Normal\")")$t_statistic
+
+yi <- rep(yi, 100)
+sei <- rep(sei, 100)
+bench::mark(
+  round(metafor::rma(yi, sei = sei)$pval, 5),
+  round(quick_metafor(yi, sei = sei)$pval, 5)
+)
+```
+

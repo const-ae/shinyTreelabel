@@ -1,0 +1,81 @@
+---
+title: "precancer_atlas_example"
+vignette: >
+  %\VignetteIndexEntry{precancer_atlas_example}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: '#>'
+---
+
+```{r}
+#| label: setup
+# library(shinyTreelabel)
+options(paged.print=FALSE)
+```
+
+
+
+```{r}
+devtools::load_all(".")
+# seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/main_seurat_data.RDS")
+seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/CD4T_v2_18Feb2025.RDS")
+meta_data <- readr::read_tsv("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/meta_data.tsv.gz") |>
+  left_join(readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/all_treelabels.RDS"), by = "cell_id") |>
+  dplyr::select(- starts_with("manual_cell_type"))
+
+
+adjusted_meta <- tibble(cell_id = colnames(seu)) |>
+  left_join(meta_data, by = "cell_id") |>
+  dplyr::select(-cell_id)
+```
+
+
+```{r}
+# SeuratObject::Assays(seu)
+# tmp <- seu[["RNA"]]
+sce <- Seurat::as.SingleCellExperiment(seu)
+rm(seu)
+```
+
+
+
+```{r}
+# prepare_shiny_treelabel(seu, reduced_dims = "umap", col_data = cd4_meta)
+prepare_shiny_treelabel(sce, col_data = adjusted_meta, design = ~ stage, 
+                        pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
+                        gene_expr_by = "stage",
+                        contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
+                                        cond(stage = "Tumor") - cond(stage = "Normal"),
+                                        cond(stage = "Tumor") - cond(stage = "Pre")),
+                        # treelabels = c("label_manual", "label_immuneA", "label_lung")
+                        treelabels = c("label_manual")
+                        )
+.vals <- rlang::ns_env("shinyTreelabel")$.vals
+backup <- rlang::ns_env("shinyTreelabel")$.vals
+```
+
+
+
+```{r}
+assignInNamespace(".vals", backup, ns = "shinyTreelabel")
+psce <- pseudobulk(.vals$counts, col_data = .vals$col_data, pseudobulk_by = vars(donor, cancer, stage))
+de_res <- de_limma(SingleCellExperiment::logcounts(psce), .vals$design, 
+                   SummarizedExperiment::colData(psce), .vals$contrasts)
+
+as_tibble(de_res)
+de_res |>
+  ggplot(aes(x = lfc, y = -log10(pval))) +
+        geom_point() +
+        geom_hline(data = \(x) x |> group_by(contrast) |> filter(adj_pval < 0.1) |> slice_max(pval, n = 1, with_ties = FALSE),
+        aes(yintercept = -log10(pval))) +
+        facet_wrap(vars(contrast))
+```
+
+```{r}
+assignInNamespace(".vals", backup, ns = "shinyTreelabel")
+shinyApp(singlecell_treelabel_ui(), singlecell_treelabel_server)
+```
+
