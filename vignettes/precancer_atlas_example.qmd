@@ -97,4 +97,19 @@ tibble(x = 2) |>
     geom_pointrange(aes(xmin = -Inf, xmax = Inf))
 ```
 
+```{r}
+jsonlite::toJSON(.vals$tree)
+igraph::bfs(.vals$tree, root = "root", mode = "out")
+
+root <- rlang::new_environment()
+root$test <- rlang::new_environment()
+root$test$hello <- rlang::new_environment(data = list(a = 1:5))
+as.list(root)
+```
+
+
+```{r}
+assignInNamespace(".vals", backup, ns = "shinyTreelabel")
+shiny::shinyApp(d3_tree_ui(), d3_tree_server)
+```
 

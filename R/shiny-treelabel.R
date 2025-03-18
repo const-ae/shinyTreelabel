@@ -69,6 +69,7 @@ prepare_shiny_treelabel <- function(data, treelabels = where(is_treelabel),
   .vals$col_data <- col_data
   .vals$treelabel_names <- names(tidyselect::eval_select({{treelabels}}, data = col_data))
   .vals$tree <- tl_tree(vec)
+  .vals$root <- tl_tree_root(vec)
   .vals$dim_reductions <- dim_reductions[intersect(names(dim_reductions), reduced_dims)]
   .vals$counts <- counts
   .vals$metaanalysis_over <- metaanalysis_over
