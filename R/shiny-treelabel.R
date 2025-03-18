@@ -12,7 +12,9 @@ NULL
 
 .vals <- new.env(parent = emptyenv())
 
+#' Prepare App
 #'
+#' @export
 prepare_shiny_treelabel <- function(data, treelabels = where(is_treelabel),
                                     design = ~ 1,
                                     pseudobulk_by = NULL,
@@ -76,7 +78,9 @@ prepare_shiny_treelabel <- function(data, treelabels = where(is_treelabel),
   .vals$contrasts <- contrasts
 }
 
-
+#'
+#'
+#' @export
 singlecell_treelabel_ui <- function(){
   de_res_ui <- shiny::div(
     conditionalPanel("output.deResultsAreNULL", shiny::p("No cells available that match selection.")),
@@ -118,6 +122,9 @@ singlecell_treelabel_ui <- function(){
   )
 }
 
+#'
+#'
+#' @export
 singlecell_treelabel_server <- function(input, output, session){
   ########## Reduced Dimension View ##########
   output$redDimPlot <- renderPlot({
@@ -165,7 +172,7 @@ singlecell_treelabel_server <- function(input, output, session){
     print("Done psce")
     psce
   }) |>
-    # bindCache(cellTypeSelector(), input$treelabelSelector) |>
+    bindCache(cellTypeSelector(), input$treelabelSelector) |>
     bindEvent(cellTypeSelector(), input$treelabelSelector)
 
   full_de_results <- reactive({
@@ -190,28 +197,35 @@ singlecell_treelabel_server <- function(input, output, session){
     print("Done full_de_results")
     res
   }) |>
-    # bindCache(psce()) |>
+    bindCache(psce()) |>
     bindEvent(psce())
 
-  de_result_meta <- reactive({
-    print("Start de_result_meta")
-    res <- if(is.null(full_de_results()) || is.null(.vals$metaanalysis_over) || length(unique(full_de_results()[[.vals$metaanalysis_over]])) == 1){
-      full_de_results()
+  de_result_meta_task <- ExtendedTask$new(function(full_de_results){
+    if(is.null(full_de_results) || is.null(.vals$metaanalysis_over) || length(unique(full_de_results[[.vals$metaanalysis_over]])) == 1){
+      NULL
     }else{
-      full_de_results() |> # we summarize over .vals$metaanalysis_over
-        arrange(name, contrast) |>
-        mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, lfc / t_statistic))) |>
-        filter(mean(is.finite(lfc_se)) >= 0.5, .by = c(name, contrast)) |>
-        summarize((\(yi, sei){
-          res <- quick_metafor(yi, sei)
-          tibble(lfc = res$b, lfc_se = res$se, pval = pmax(1e-22, res$pval), tau = sqrt(res$tau2))
-        })(lfc ,lfc_se),
-        .by = c(name, contrast)) |>
-        mutate(adj_pval = p.adjust(pval, method = "BH"), .by = contrast) |>
-        transmute(name, pval, adj_pval, t_statistic = lfc/lfc_se, lfc, contrast)
+      promises::future_promise({
+        print("Start de_result_meta")
+        res <- full_de_results |> # we summarize over .vals$metaanalysis_over
+          arrange(name, contrast) |>
+          mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, lfc / t_statistic))) |>
+          filter(mean(is.finite(lfc_se)) >= 0.5, .by = c(name, contrast)) |>
+          summarize((\(yi, sei){
+            res <- quick_metafor(yi, sei)
+            tibble(lfc = res$b, lfc_se = res$se, pval = pmax(1e-22, res$pval), tau = sqrt(res$tau2))
+          })(lfc ,lfc_se),
+          .by = c(name, contrast)) |>
+          mutate(adj_pval = p.adjust(pval, method = "BH"), .by = contrast) |>
+          transmute(name, pval, adj_pval, t_statistic = lfc/lfc_se, lfc, contrast)
+        print("Done de_result_meta")
+        res
+      })
     }
-    print("Done de_result_meta")
-    res
+  })
+
+  observeEvent(full_de_results(), {
+    print("Invoke de_result_meta_task")
+    de_result_meta_task$invoke(full_de_results())
   })
 
   de_result_display <- reactive({
@@ -223,7 +237,7 @@ singlecell_treelabel_server <- function(input, output, session){
       full_de_results() |>
         filter(!! rlang::sym(.vals$metaanalysis_over) == input$metaanalysisSelector)
     }else{
-      de_result_meta()
+      de_result_meta_task$result()
     }
   })
 
@@ -341,7 +355,7 @@ singlecell_treelabel_server <- function(input, output, session){
     if(! is.null(psce()) && sel_gene %in% rownames(psce())){
       res <- full_de_results() |> filter(name == sel_gene)
       if(! is.null(.vals$metaanalysis_over)){
-        meta_res <- de_result_meta() |> filter(name == sel_gene) |> mutate(!!metaanalysis_over_sym := "Meta")
+        meta_res <- de_result_meta_task$result() |> filter(name == sel_gene) |> mutate(!!metaanalysis_over_sym := "Meta")
         res <- bind_rows(res, meta_res) |>
           mutate(!!metaanalysis_over_sym := forcats::fct_relevel(as.factor(!!metaanalysis_over_sym), "Meta", after = 0L)) |>
           mutate(!!metaanalysis_over_sym := forcats::fct_rev(!! metaanalysis_over_sym))
@@ -359,10 +373,6 @@ singlecell_treelabel_server <- function(input, output, session){
       pl
     }
   })
-
-  outputOptions(output, "selGeneExpressionStratified", priority = 10)
-  outputOptions(output, "selGeneExpressionContrasted", priority = 100)
-
 
 }
 

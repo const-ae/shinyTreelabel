@@ -12,10 +12,13 @@ knitr:
 
 ```{r}
 #| label: setup
-# library(shinyTreelabel)
 options(paged.print=FALSE)
 ```
 
+```{r}
+library(shinyTreelabel)
+library(tidyverse)
+```
 
 
 ```{r}
@@ -75,8 +78,16 @@ de_res |>
 ```
 
 ```{r}
+# future::plan(future::multisession())
+future::plan(future::sequential())
+options(future.globals.maxSize= 20 * 1024^3) # 20GB
+
+```
+
+
+```{r}
 assignInNamespace(".vals", backup, ns = "shinyTreelabel")
-shinyApp(singlecell_treelabel_ui(), singlecell_treelabel_server)
+shiny::shinyApp(singlecell_treelabel_ui(), singlecell_treelabel_server)
 ```
 
 
