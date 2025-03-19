@@ -113,3 +113,24 @@ assignInNamespace(".vals", backup, ns = "shinyTreelabel")
 shiny::shinyApp(d3_tree_ui(), d3_tree_server)
 ```
 
+
+```{r}
+tree <- .vals$tree
+
+selected <- c("CD4_Temra", "CD8_Tex", "Treg")
+
+find_ancestors <- function(graph, node) {
+  ancestors <- c()
+  parent <- igraph::neighbors(graph, node, mode = "in")
+  while (length(parent) > 0) {
+    ancestors <- c(ancestors, parent)
+    parent <- igraph::neighbors(graph, parent, mode = "in")
+  }
+  c(node, names(ancestors))
+}
+
+ancestor_list <- lapply(selected, \(n) find_ancestors(tree, n))
+Reduce(intersect, ancestor_list)[1]
+```
+
+

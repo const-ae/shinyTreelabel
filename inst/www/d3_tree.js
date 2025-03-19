@@ -130,7 +130,7 @@ export class D3TreeSelector {
                 }
                 this.updateTree(collapsing = true);
               }else{
-                Shiny.setInputValue(this.id + "-d3TreeClick", d.data.name);
+                Shiny.setInputValue(this.id + "-d3TreeClick", d.data.name, {priority: "event"});
               }
             })
             .on("mouseover",  (event, d) => {
