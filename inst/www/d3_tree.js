@@ -20,7 +20,7 @@ export class D3TreeSelector {
     this.collapsed_elements = new Set()
 
 
-    Shiny.addCustomMessageHandler("firstTreeFullData", (message) => {
+    Shiny.addCustomMessageHandler(this.id + "-firstTreeFullData", (message) => {
       this.root = d3.hierarchy(message);
 
       // Rows are separated by dx pixels, columns by dy pixels. These names can be counter-intuitive
@@ -59,11 +59,12 @@ export class D3TreeSelector {
       this.updateTree();
 
       // Append the SVG element.
-      d3tree_holder.append(this.svg.node());
+      console.log("Appending svg element to: " + this.id + "-d3tree_holder");
+      document.getElementById(this.id + "-d3tree_holder").append(this.svg.node());
     });
 
 
-    Shiny.addCustomMessageHandler("treeFullData", (message) => {
+    Shiny.addCustomMessageHandler(this.id + "-treeFullData", (message) => {
      console.log("Update Tree")
      console.log(message);
      this.root = d3.hierarchy(message);
@@ -72,7 +73,6 @@ export class D3TreeSelector {
         d.id = d.data.name;
         d._children = d.children;
         if(this.collapsed_elements.has(d.id)){
-          console.log("Skipping: " + d.id);
           d.children = null
         }
       });
@@ -120,7 +120,6 @@ export class D3TreeSelector {
             .style("stroke-opacity", 0)
             .attr("transform", d => `translate(2000,${d.x})`)
             .on("click", (event, d) => {
-              console.log("Inside on click");
               if(event?.altKey){
                 if(d.children){
                   this.collapsed_elements.add(d.id);
