@@ -4,11 +4,17 @@ d3_tree_ui <- function(){
   resources <- system.file("www", package = "shinyTreelabel")
   navbarPage(title = "Explore your single cell data",
              header = tags$head(
+                tags$script(src = "www/d3_tree.js", type = "module")
              ),
              tabPanel("Overview (UMAP etc.)"),
              tabPanel("Differential Expression",
                       selectInput("treelabelSelector", "Treelabel selector", choices = letters, selected = "A"),
-                      tags$script(src = "www/d3_tree.js", type = "module"),
+                      tags$script(HTML(r"(
+                        console.log("Inside calling module");
+                        import { D3TreeSelector } from './www/d3_tree.js';
+                        new D3TreeSelector('hello');
+                      )"
+                      ), type = "module"),
                       tags$div(id = "d3tree_holder")
              ),
              tabPanel("Differential Abundance"),
@@ -16,10 +22,17 @@ d3_tree_ui <- function(){
   )
 }
 
+# treeSelectorUI <- function(id){
+#   tagList(
+#     tags$script(src = "www/d3_tree.js", type = "module"),
+#     tags$div(id = NS(id, "d3tree_holder"))
+#   )
+# }
+
 d3_tree_server <- function(input, output, session){
   session$sendCustomMessage("firstTreeFullData", igraph_tree_to_nested_list(.vals$tree, .vals$root, \(x) list(selected=FALSE)))
-  observeEvent(input$d3TreeClick, {
-    clicked_node <- input$d3TreeClick
+  observeEvent(input$`hello-d3TreeClick`, {
+    clicked_node <- input$`hello-d3TreeClick`
     print(paste0("Clicked: ", clicked_node))
     nested_list <- igraph_tree_to_nested_list(.vals$tree, .vals$root, callback = \(x){
       if(x == clicked_node){
