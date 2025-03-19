@@ -7,68 +7,45 @@ const marginRight = 20;
 const marginBottom = 30;
 const marginLeft = 40;
 
+const dx = 15;
+const diagonal = d3.linkHorizontal().x(d => d.y).y(d => d.x);
+var svg = null;
+var tree = null;
+var gNode = null;
+var gLink = null;
+var old_root = null;
 
-Shiny.addCustomMessageHandler("treeFullData", function(message) {
-  console.log("Received message!!");
-  console.log(message);
-  const root = d3.hierarchy(message);
-  const diagonal = d3.linkHorizontal().x(d => d.y).y(d => d.x);
+function updateTree(root, event, source) {
+  console.log("updateTree")
+  const nodes = root.descendants().reverse();
+  const links = root.links();
+  const duration = 500;
 
-  // Rows are separated by dx pixels, columns by dy pixels. These names can be counter-intuitive
-  // (dx is a height, and dy a width). This because the tree must be viewed with the root at the
-  // “bottom”, in the data domain. The width of a column is based on the tree’s height.
-  const dx = 15;
-  const dy = (width - marginRight - marginLeft) / (1 + root.height);
+  // Compute the new tree layout.
+  tree(root);
 
-  // Define the tree layout and the shape for links.
-  const tree = d3.tree().nodeSize([dx, dy]);
+  let left = root;
+  let right = root;
+  root.eachBefore(node => {
+    if (node.x < left.x) left = node;
+    if (node.x > right.x) right = node;
+  });
 
-  // Create the SVG container, a layer for the links and a layer for the nodes.
-  const svg = d3.create("svg")
-      .attr("width", width)
-      .attr("height", dx)
-      .attr("viewBox", [-marginLeft, -marginTop, width, dx])
-      .attr("style", "max-width: 100%; height: auto; font: 12px sans-serif; user-select: none;");
+  const height = right.x - left.x + marginTop + marginBottom;
 
-  const gLink = svg.append("g")
-      .attr("fill", "none")
-      .attr("stroke", "#555")
-      .attr("stroke-opacity", 0.4)
-      .attr("stroke-width", 1.5);
+  const transition = svg.transition()
+      .duration(duration)
+      .attr("height", height)
+      .attr("viewBox", [-marginLeft, left.x - marginTop, width, height])
+      .tween("resize", window.ResizeObserver ? null : () => () => svg.dispatch("toggle"));
 
-  const gNode = svg.append("g")
-      .attr("cursor", "pointer")
-      .attr("pointer-events", "all");
 
-  function updateTree(event, source) {
-    console.log("updateTree")
-    const duration = 250; // hold the alt key to slow down the transition
-    const nodes = root.descendants().reverse();
-    const links = root.links();
+  // Update the nodes…
+  const node = gNode.selectAll("g")
+    .data(nodes, d => d.id);
 
-    // Compute the new tree layout.
-    tree(root);
-
-    let left = root;
-    let right = root;
-    root.eachBefore(node => {
-      if (node.x < left.x) left = node;
-      if (node.x > right.x) right = node;
-    });
-
-    const height = right.x - left.x + marginTop + marginBottom;
-
-    const transition = svg.transition()
-        .duration(duration)
-        .attr("height", height)
-        .attr("viewBox", [-marginLeft, left.x - marginTop, width, height])
-        .tween("resize", window.ResizeObserver ? null : () => () => svg.dispatch("toggle"));
-
-    // Update the nodes…
-    const node = gNode.selectAll("g")
-      .data(nodes, d => d.id);
-
-    // Enter any new nodes at the parent's previous position.
+  // Enter any new nodes at the parent's previous position.
+     // Enter any new nodes at the parent's previous position.
     const nodeEnter = node.enter().append("g")
         .attr("transform", d => `translate(${source.y0},${source.x0})`)
         .attr("fill-opacity", 0)
@@ -76,7 +53,7 @@ Shiny.addCustomMessageHandler("treeFullData", function(message) {
         .on("click", (event, d) => {
           if(event?.altKey){
             d.children = d.children ? null : d._children;
-            updateTree(event, d);
+            updateTree(root, event, d);
           }else{
             d3.select(event.currentTarget)
               .style("stroke", "green");
@@ -151,8 +128,40 @@ Shiny.addCustomMessageHandler("treeFullData", function(message) {
       d.x0 = d.x;
       d.y0 = d.y;
     });
-  }
+}
 
+
+
+
+Shiny.addCustomMessageHandler("firstTreeFullData", function(message) {
+  const root = d3.hierarchy(message);
+
+
+  // Rows are separated by dx pixels, columns by dy pixels. These names can be counter-intuitive
+  // (dx is a height, and dy a width). This because the tree must be viewed with the root at the
+  // “bottom”, in the data domain. The width of a column is based on the tree’s height.
+
+  const dy = (width - marginRight - marginLeft) / (1 + root.height);
+
+  // Define the tree layout and the shape for links.
+  tree = d3.tree().nodeSize([dx, dy]);
+
+  // Create the SVG container, a layer for the links and a layer for the nodes.
+  svg = d3.create("svg")
+      .attr("width", width)
+      .attr("height", dx)
+      .attr("viewBox", [-marginLeft, -marginTop, width, dx])
+      .attr("style", "max-width: 100%; height: auto; font: 12px sans-serif; user-select: none;");
+
+  gLink = svg.append("g")
+      .attr("fill", "none")
+      .attr("stroke", "#555")
+      .attr("stroke-opacity", 0.4)
+      .attr("stroke-width", 1.5);
+
+  gNode = svg.append("g")
+      .attr("cursor", "pointer")
+      .attr("pointer-events", "all");
 
 
 
@@ -164,12 +173,18 @@ Shiny.addCustomMessageHandler("treeFullData", function(message) {
     // if (d.depth && d.data.name.length !== 7) d.children = null;
   });
 
-  updateTree(null, root);
+  updateTree(root, null, root);
+  old_root = root;
 
   // Append the SVG element.
-  d3tree_holder.innerHTML = "";
   d3tree_holder.append(svg.node());
 });
 
 
+Shiny.addCustomMessageHandler("treeFullData", function(message) {
+ console.log(message);
+ const root = d3.hierarchy(message);
+ updateTree(root, null, root);
+ old_root = root;
+});
 

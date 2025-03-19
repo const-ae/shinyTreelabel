@@ -17,14 +17,14 @@ d3_tree_ui <- function(){
 }
 
 d3_tree_server <- function(input, output, session){
-  session$sendCustomMessage("treeFullData", igraph_tree_to_nested_list(.vals$tree, .vals$root, \(x) list(selected=FALSE)))
+  session$sendCustomMessage("firstTreeFullData", igraph_tree_to_nested_list(.vals$tree, .vals$root, \(x) list(selected=FALSE)))
   observeEvent(input$d3TreeClick, {
     clicked_node <- input$d3TreeClick
     print(paste0("Clicked: ", clicked_node))
     nested_list <- igraph_tree_to_nested_list(.vals$tree, .vals$root, callback = \(x){
       list(selected = (x == clicked_node))
     })
-    nested_list$children <- nested_list$children[1:3]
+    # nested_list$children <- nested_list$children[1:3]
     session$sendCustomMessage("treeFullData", nested_list)
   })
 
