@@ -22,9 +22,12 @@ d3_tree_server <- function(input, output, session){
     clicked_node <- input$d3TreeClick
     print(paste0("Clicked: ", clicked_node))
     nested_list <- igraph_tree_to_nested_list(.vals$tree, .vals$root, callback = \(x){
-      list(selected = (x == clicked_node))
+      if(x == clicked_node){
+        list(selected = TRUE, selectionColor = "orange")
+      }else{
+        NULL
+      }
     })
-    # nested_list$children <- nested_list$children[1:3]
     session$sendCustomMessage("treeFullData", nested_list)
   })
 

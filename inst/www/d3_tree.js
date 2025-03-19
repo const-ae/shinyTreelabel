@@ -13,17 +13,8 @@ var svg = null;
 var tree = null;
 var gNode = null;
 var gLink = null;
-var old_root = null;
 
-function updateTree(root, event, source) {
-  console.log("updateTree")
-  const nodes = root.descendants().reverse();
-  const links = root.links();
-  const duration = 500;
-
-  // Compute the new tree layout.
-  tree(root);
-
+function treeDimension(root){
   let left = root;
   let right = root;
   root.eachBefore(node => {
@@ -32,102 +23,128 @@ function updateTree(root, event, source) {
   });
 
   const height = right.x - left.x + marginTop + marginBottom;
+  return {"start": left.x, "height": height};
+}
 
-  const transition = svg.transition()
-      .duration(duration)
-      .attr("height", height)
-      .attr("viewBox", [-marginLeft, left.x - marginTop, width, height])
-      .tween("resize", window.ResizeObserver ? null : () => () => svg.dispatch("toggle"));
+function updateTree(root) {
 
+  const nodes = root.descendants().reverse();
+  const links = root.links();
+  const duration = 5000;
 
-  // Update the nodes…
+  // Compute the new tree layout.
+  tree(root);
+  const tree_dim = treeDimension(root);
+
+  // Transition of the svg container
+  const transition = svg
+    .transition()
+    .duration(duration)
+    .attr("height", tree_dim.height)
+    .attr("viewBox", [-marginLeft, tree_dim.start - marginTop, width, tree_dim.height])
+    .tween("resize", window.ResizeObserver ? null : () => () => svg.dispatch("toggle"));
+
   const node = gNode.selectAll("g")
-    .data(nodes, d => d.id);
+    .data(nodes, d => d.id)
+    .join(
+      (enter) => {
+        let group = enter.append('g')
+          .style("fill-opacity", 0)
+          .style("stroke-opacity", 0)
+          .attr("transform", d => `translate(2000,${d.x})`)
+          .on("click", (event, d) => {
+              if(event?.altKey){
+                d.children = d.children ? null : d._children;
+                updateTree(root);
+              }else{
+                Shiny.setInputValue("d3TreeClick", d.data.name);
+              }
+          })
+          .on("mouseover",  (event, d) => {
+              d3.select(event.currentTarget)
+                .select('circle')
+                .attr("r", 10);
+          })
+          .on("mouseout", (event, d) => {
+              d3.select(event.currentTarget)
+                .select('circle')
+                .attr("r", 5);
+          });
+        group.append('circle')
+          .attr("r", 5)
+          // .style('fill', d => d._children ? "#555" : "#999")
+        group.append('text')
+          .attr("dy", "0.31em")
+          .attr("x", d => d._children ? -6 : 6)
+          .attr("text-anchor", d => d._children ? "end" : "start")
+          .text(d => d.data.name)
+          .style("stroke-linejoin", "round")
+          .style("stroke-width", 3)
+          .style("stroke", "white")
+          .style("paint-order", "stroke")
+        return group;
+      },
+      (update) => {
+        return update;
+      },
+      (exit) => {
+        return exit
+          .transition(transition)
+          .remove()
+          .style("fill-opacity", 0)
+          .style("stroke-opacity", 0);
+      }
+    )
+    .transition(transition)
+    .attr("transform", d => `translate(${d.y},${d.x})`)
+    .style("fill-opacity", 1)
+    .style("stroke-opacity", 1);
 
-  // Enter any new nodes at the parent's previous position.
-     // Enter any new nodes at the parent's previous position.
-    const nodeEnter = node.enter().append("g")
-        .attr("transform", d => `translate(${source.y0},${source.x0})`)
-        .attr("fill-opacity", 0)
-        .attr("stroke-opacity", 0)
-        .on("click", (event, d) => {
-          if(event?.altKey){
-            d.children = d.children ? null : d._children;
-            updateTree(root, event, d);
-          }else{
-            d3.select(event.currentTarget)
-              .style("stroke", "green");
-            Shiny.setInputValue("d3TreeClick", d.data.name);
-          }
-        })
-        .on("mouseover",  (event, d) => {
-            d3.select(event.currentTarget).style("stroke", "grey");
-        })
-        .on("mouseout", (event, d) => {
-            d3.select(event.currentTarget).style("stroke", "#0000");
-        });
+  // Update some features of the circle if it is selected.
+  node
+    .select("circle")
+    .style('fill', d => {
+      if(d.data.selected){
+        return d.data.selectionColor ? d.data.selectionColor : "green";
+      }else{
+        return d._children ? "#555" : "#999";
+      }
+    })
+    .attr("r", d => d.data.selected ? 7 : 5);
 
-    nodeEnter.append("circle")
-        .attr("r", 2.5)
-        .attr("stroke-width", 10)
-        .attr("fill", d => {
-          console.log("Update Circle fill: ", d.data.selected);
-          if(d.data.selected){
-            return "green"
-          }else{
-            return d._children ? "#555" : "#999"
-          }
-        });
 
-    nodeEnter.append("text")
-        .attr("dy", "0.31em")
-        .attr("x", d => d._children ? -6 : 6)
-        .attr("text-anchor", d => d._children ? "end" : "start")
-        .text(d => d.data.name)
-        .attr("stroke-linejoin", "round")
-        .attr("stroke-width", 3)
-        .attr("stroke", "white")
-        .attr("paint-order", "stroke");
 
-    // Transition nodes to their new position.
-    const nodeUpdate = node.merge(nodeEnter).transition(transition)
-        .attr("transform", d => `translate(${d.y},${d.x})`)
-        .attr("fill-opacity", 1)
-        .attr("stroke-opacity", 1);
 
-    // Transition exiting nodes to the parent's new position.
-    const nodeExit = node.exit().transition(transition).remove()
-        .attr("transform", d => `translate(${source.y},${source.x})`)
-        .attr("fill-opacity", 0)
-        .attr("stroke-opacity", 0);
+  const link = gLink.selectAll("path")
+    .data(links, d => d.source.id + "-->" + d.target.id)
+    .join(
+      (enter) => {
+        console.log("Path enter size: " + enter.size());
+        return enter.append("path")
+          .style("fill-opacity", 0)
+          .style("stroke-opacity", 0);
+          // .attr("d", d => {
+          //   const o = {x: d.target.x, y: 2000};
+          //   const old_source = {x: d.source.x0, y: d.source.y0};
+          //   return diagonal({source: old_source, target: o});
+          // })
+      },
+      (update) => {
+        console.log("Path update size: " + update.size());
+        return update
+      },
+      (exit) => {
+        return exit
+          .remove()
+          .style("fill-opacity", 0)
+          .style("stroke-opacity", 0);
+      }
+    )
+    .attr("d", diagonal)
+    .transition(transition)
+    .style("fill-opacity", 1)
+    .style("stroke-opacity", 1);
 
-    // Update the links…
-    const link = gLink.selectAll("path")
-      .data(links, d => d.target.id);
-
-    // Enter any new links at the parent's previous position.
-    const linkEnter = link.enter().append("path")
-        .attr("d", d => {
-          const o = {x: source.x0, y: source.y0};
-          return diagonal({source: o, target: o});
-        });
-
-    // Transition links to their new position.
-    link.merge(linkEnter).transition(transition)
-        .attr("d", diagonal);
-
-    // Transition exiting nodes to the parent's new position.
-    link.exit().transition(transition).remove()
-        .attr("d", d => {
-          const o = {x: source.x, y: source.y};
-          return diagonal({source: o, target: o});
-        });
-
-    // Stash the old positions for transition.
-    root.eachBefore(d => {
-      d.x0 = d.x;
-      d.y0 = d.y;
-    });
 }
 
 
@@ -136,11 +153,9 @@ function updateTree(root, event, source) {
 Shiny.addCustomMessageHandler("firstTreeFullData", function(message) {
   const root = d3.hierarchy(message);
 
-
   // Rows are separated by dx pixels, columns by dy pixels. These names can be counter-intuitive
   // (dx is a height, and dy a width). This because the tree must be viewed with the root at the
   // “bottom”, in the data domain. The width of a column is based on the tree’s height.
-
   const dy = (width - marginRight - marginLeft) / (1 + root.height);
 
   // Define the tree layout and the shape for links.
@@ -163,18 +178,12 @@ Shiny.addCustomMessageHandler("firstTreeFullData", function(message) {
       .attr("cursor", "pointer")
       .attr("pointer-events", "all");
 
-
-
-  root.x0 = dy / 2;
-  root.y0 = 0;
   root.descendants().forEach((d, i) => {
-    d.id = i;
+    d.id = d.data.name;
     d._children = d.children;
-    // if (d.depth && d.data.name.length !== 7) d.children = null;
   });
 
-  updateTree(root, null, root);
-  old_root = root;
+  updateTree(root);
 
   // Append the SVG element.
   d3tree_holder.append(svg.node());
@@ -182,9 +191,14 @@ Shiny.addCustomMessageHandler("firstTreeFullData", function(message) {
 
 
 Shiny.addCustomMessageHandler("treeFullData", function(message) {
+ console.log("Update Tree")
  console.log(message);
  const root = d3.hierarchy(message);
- updateTree(root, null, root);
- old_root = root;
-});
 
+ root.descendants().forEach((d, i) => {
+    d.id = d.data.name;
+    d._children = d.children;
+  });
+
+ updateTree(root);
+});
