@@ -30,15 +30,15 @@ prepare_shiny_treelabel <- function(data, treelabels = where(is_treelabel),
   }else if(is(data, "SummarizedExperiment")){
     counts <- SummarizedExperiment::assay(data, count_assay)
     col_data <- cbind(SummarizedExperiment::colData(data), col_data)
-    dim_reductions <- lapply(SingleCellExperiment::reducedDims(sce), \(x) x[,1:2,drop=FALSE])
+    dim_reductions <- lapply(SingleCellExperiment::reducedDims(data), \(x) x[,1:2,drop=FALSE])
     if(is.null(reduced_dims)){
-      reduced_dims <- SingleCellExperiment::reducedDimNames(sce)
+      reduced_dims <- SingleCellExperiment::reducedDimNames(data)
     }
   }else if(inherits(data, "Seurat")){
     counts <- data[[seurat_assay]]$counts
     col_data <- bind_cols(data[[]], col_data)
-    red <- SeuratObject::Reductions(seu)
-    dim_reductions <- lapply(red, \(name) SeuratObject::Embeddings(seu, reduction = name)[,1:2,drop=FALSE])
+    red <- SeuratObject::Reductions(data)
+    dim_reductions <- lapply(red, \(name) SeuratObject::Embeddings(data, reduction = name)[,1:2,drop=FALSE])
     names(dim_reductions) <- red
     if(is.null(reduced_dims)){
       reduced_dims <- red
