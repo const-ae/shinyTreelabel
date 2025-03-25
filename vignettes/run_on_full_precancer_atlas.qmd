@@ -1,0 +1,48 @@
+---
+title: "Untitled"
+---
+
+```{r}
+library(shinyTreelabel)
+library(tidyverse)
+```
+
+
+```{r}
+seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/main_seurat_data.RDS")
+meta_data <- readr::read_tsv("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/meta_data.tsv.gz") |>
+  left_join(readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/all_treelabels.RDS"), by = "cell_id") |>
+  dplyr::select(- starts_with("manual_cell_type"))
+
+
+adjusted_meta <- tibble(cell_id = colnames(seu)) |>
+  left_join(meta_data, by = "cell_id") |>
+  dplyr::select(-cell_id)
+
+sce <- Seurat::as.SingleCellExperiment(seu)
+rm(seu)
+```
+
+```{r}
+prepare_shiny_treelabel(sce, col_data = adjusted_meta, design = ~ stage, 
+                        pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
+                        gene_expr_by = "stage",
+                        contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
+                                        cond(stage = "Tumor") - cond(stage = "Normal"),
+                                        cond(stage = "Tumor") - cond(stage = "Pre")),
+                        treelabels = c("label_manual", "label_immuneA", "label_lung")
+                        # treelabels = c("label_manual")
+                        )
+```
+
+
+```{r}
+future::plan(future::multisession())
+options(future.globals.maxSize= 20 * 1024^3) # 20GB
+```
+
+
+```{r}
+shiny::shinyApp(singlecell_treelabel_ui(), singlecell_treelabel_server)
+```
+

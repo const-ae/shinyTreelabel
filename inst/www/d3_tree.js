@@ -120,23 +120,27 @@ export class D3TreeSelector {
             .style("stroke-opacity", 0)
             .attr("transform", d => `translate(2000,${d.x})`)
             .on("click", (event, d) => {
-              if(event?.altKey){
-                if(d.children){
-                  this.collapsed_elements.add(d.id);
-                  d.children = null
-                }else{
-                  this.collapsed_elements.delete(d.id);
-                  d.children = d._children
-                }
-                this.updateTree(collapsing = true);
-              }else{
-                Shiny.setInputValue(this.id + "-d3TreeClick", d.data.name, {priority: "event"});
-              }
+               if(d.data.selectable){
+                  if(event?.altKey){
+                    if(d.children){
+                      this.collapsed_elements.add(d.id);
+                      d.children = null
+                    }else{
+                      this.collapsed_elements.delete(d.id);
+                      d.children = d._children
+                    }
+                    this.updateTree(collapsing = true);
+                  }else{
+                    Shiny.setInputValue(this.id + "-d3TreeClick", d.data.name, {priority: "event"});
+                  }
+               }
             })
             .on("mouseover",  (event, d) => {
-                d3.select(event.currentTarget)
-                  .select('circle')
-                  .attr("r", 10);
+              if(d.data.selectable){
+                  d3.select(event.currentTarget)
+                    .select('circle')
+                    .attr("r", 10);
+              }
             })
             .on("mouseout", (event, d) => {
                 d3.select(event.currentTarget)
@@ -170,8 +174,12 @@ export class D3TreeSelector {
       )
       .transition(transition)
       .attr("transform", d => `translate(${d.y},${d.x})`)
-      .style("fill-opacity", 1)
-      .style("stroke-opacity", 1);
+      .style("fill-opacity", d => {
+        return d.data.selectable ? 1 : 0.2
+      })
+      .style("stroke-opacity", d => {
+        return d.data.selectable ? 1 : 0.2
+      });
 
     // Update some features of the circle if it is selected.
     node
@@ -217,7 +225,9 @@ export class D3TreeSelector {
       .transition()
       .duration(100)
       .delay(duration)   // Delay until global animation is done.
-      .style("stroke-opacity", 0.4);
+      .style("stroke-opacity", d => {
+        return d.target.data.selectable ? 0.4 : 0.03
+      });
   }
 }
 
