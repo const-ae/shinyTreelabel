@@ -93,6 +93,8 @@ singlecell_treelabel_ui <- function(){
 
   navbarPage(title = "Explore your single cell data",
              tabPanel("Overview (UMAP etc.)",
+                      selectInput("treelabelSelector0", "Treelabel selector", choices = .vals$treelabel_names,
+                                  selected = .vals$treelabel_names[1], multiple = FALSE),
                       treeSelectorUI('celltype_selectorUMAP'),
                       selectInput("redDimSelector", "Dimension reduction", choices = names(.vals$dim_reductions)),
                       plotOutput(outputId = "redDimPlot")
@@ -130,18 +132,27 @@ singlecell_treelabel_server <- function(input, output, session){
   ##### Treelabel selector
 
   treelabelSelector <- reactiveVal("")
+  observeEvent(input$treelabelSelector0, {
+    treelabelSelector(input$treelabelSelector0)
+    updateSelectInput(session, inputId = "treelabelSelector1", selected = input$treelabelSelector0)
+    updateSelectInput(session, inputId = "treelabelSelector2", selected = input$treelabelSelector0)
+    updateSelectInput(session, inputId = "treelabelSelector3", selected = input$treelabelSelector0)
+  })
   observeEvent(input$treelabelSelector1, {
     treelabelSelector(input$treelabelSelector1)
+    updateSelectInput(session, inputId = "treelabelSelector0", selected = input$treelabelSelector1)
     updateSelectInput(session, inputId = "treelabelSelector2", selected = input$treelabelSelector1)
     updateSelectInput(session, inputId = "treelabelSelector3", selected = input$treelabelSelector1)
   })
   observeEvent(input$treelabelSelector2, {
     treelabelSelector(input$treelabelSelector2)
+    updateSelectInput(session, inputId = "treelabelSelector0", selected = input$treelabelSelector2)
     updateSelectInput(session, inputId = "treelabelSelector1", selected = input$treelabelSelector2)
     updateSelectInput(session, inputId = "treelabelSelector3", selected = input$treelabelSelector2)
   })
   observeEvent(input$treelabelSelector3, {
     treelabelSelector(input$treelabelSelector3)
+    updateSelectInput(session, inputId = "treelabelSelector0", selected = input$treelabelSelector3)
     updateSelectInput(session, inputId = "treelabelSelector1", selected = input$treelabelSelector3)
     updateSelectInput(session, inputId = "treelabelSelector2", selected = input$treelabelSelector3)
   })
