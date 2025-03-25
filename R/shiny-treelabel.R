@@ -169,11 +169,9 @@ singlecell_treelabel_server <- function(input, output, session){
 
   ########## Reduced Dimension View ##########
   cellTypeSelectorUMAPView <- treeSelectorServer("celltype_selectorUMAP", selection_mode = "multiple",
-                                                 update_selectable_nodes = selectable_nodes,
-                                                 update_selected_node = reactiveVal("Immune"))
+                                                 update_selectable_nodes = selectable_nodes)
 
   output$redDimPlot <- renderPlot({
-    req(cellTypeSelectorUMAPView$selected_nodes())
     if(input$redDimSelector %in% names(.vals$dim_reductions)){
       sel_nodes <- as.character(cellTypeSelectorUMAPView$selected_nodes())
       .vals$col_data |>
@@ -429,6 +427,7 @@ singlecell_treelabel_server <- function(input, output, session){
           geom_vline(xintercept  = 0) +
           geom_pointrange(aes(xmin = conf.low, xmax = conf.high, color = !!metaanalysis_over_sym == "Meta"), show.legend = FALSE) +
           scale_color_manual(values = c("TRUE" = "red", "FALSE" = "black")) +
+          scale_x_continuous(limits = c(-3.2, 3.2), expand = expansion(add = 0), oob = scales::oob_squish) +
           facet_wrap(vars(contrast))
       print("Done renderPlot selGeneExpressionContrasted")
       pl

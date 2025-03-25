@@ -24,14 +24,21 @@ rm(seu)
 ```
 
 ```{r}
-prepare_shiny_treelabel(sce, col_data = adjusted_meta, design = ~ stage, 
+sel <- sample.int(ncol(sce), size = 1e4)
+sce_subset <- sce[,sel]
+adjusted_meta <- adjusted_meta[sel,]
+```
+
+
+```{r}
+prepare_shiny_treelabel(sce_subset, col_data = adjusted_meta, design = ~ stage, 
                         pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
                         gene_expr_by = "stage",
                         contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
                                         cond(stage = "Tumor") - cond(stage = "Normal"),
                                         cond(stage = "Tumor") - cond(stage = "Pre")),
-                        treelabels = c("label_manual", "label_immuneA", "label_lung")
-                        # treelabels = c("label_manual")
+                        treelabels = c("label_manual", "label_immuneA", "label_lung",
+                                       "label_liver", "label_tilC")
                         )
 ```
 
