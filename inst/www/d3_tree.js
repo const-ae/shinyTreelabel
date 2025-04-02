@@ -120,17 +120,17 @@ export class D3TreeSelector {
             .style("stroke-opacity", 0)
             .attr("transform", d => `translate(2000,${d.x})`)
             .on("click", (event, d) => {
-               if(d.data.selectable){
-                  if(event?.altKey){
-                    if(d.children){
-                      this.collapsed_elements.add(d.id);
-                      d.children = null
-                    }else{
-                      this.collapsed_elements.delete(d.id);
-                      d.children = d._children
-                    }
-                    this.updateTree(collapsing = true);
+                if(event?.altKey){
+                  if(d.children){
+                    this.collapsed_elements.add(d.id);
+                    d.children = null
                   }else{
+                    this.collapsed_elements.delete(d.id);
+                    d.children = d._children
+                  }
+                  this.updateTree(collapsing = true);
+                }else{
+                  if(d.data.selectable){
                     Shiny.setInputValue(this.id + "-d3TreeClick", d.data.name, {priority: "event"});
                   }
                }

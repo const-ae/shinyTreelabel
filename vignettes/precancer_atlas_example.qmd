@@ -28,10 +28,6 @@ meta_data <- readr::read_tsv("~/Documents/Work_Projects/precancer-atlas-code/dat
   left_join(readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/all_treelabels.RDS"), by = "cell_id") |>
   dplyr::select(- starts_with("manual_cell_type"))
 
-
-adjusted_meta <- tibble(cell_id = colnames(seu)) |>
-  left_join(meta_data, by = "cell_id") |>
-  dplyr::select(-cell_id)
 ```
 
 
@@ -43,18 +39,28 @@ rm(seu)
 ```
 
 
+```{r}
+sce <- sce[,sce$cancer_type %in% c("LUAD", "BRCA", "LUSC", "PDAC")]
+sce <- sce[,sample.int(ncol(sce), size = 5000)]
+adjusted_meta <- tibble(cell_id = sce$cell_id) |>
+  left_join(meta_data, by = "cell_id") |>
+  dplyr::select(-cell_id)
+```
 
 ```{r}
-# prepare_shiny_treelabel(seu, reduced_dims = "umap", col_data = cd4_meta)
-prepare_shiny_treelabel(sce, col_data = adjusted_meta, design = ~ stage, 
+# init_shinyTreelabel(seu, reduced_dims = "umap", col_data = cd4_meta)
+init_shinyTreelabel(sce, col_data = adjusted_meta, design = ~ stage, 
                         pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
                         gene_expr_by = "stage",
                         contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
                                         cond(stage = "Tumor") - cond(stage = "Normal"),
                                         cond(stage = "Tumor") - cond(stage = "Pre")),
-                        treelabels = c("label_manual", "label_immuneA", "label_lung")
-                        # treelabels = c("label_manual")
-                        )
+                        treelabels = c("label_manual", "label_immuneA", "label_lung"))
+
+system.time(
+  res <- precalculate_results(list(treelabels = "all", nodes = "all"))
+)
+install_precalculated_results(res)
 .vals <- rlang::ns_env("shinyTreelabel")$.vals
 backup <- rlang::ns_env("shinyTreelabel")$.vals
 ```
@@ -68,34 +74,4 @@ shiny::shinyApp(singlecell_treelabel_ui(), singlecell_treelabel_server)
 ```
 
 
-```{r}
-tibble(x = 2) |>
-  ggplot(aes(y = "hello", x = x)) +
-    geom_pointrange(aes(xmin = -Inf, xmax = Inf))
-```
-
-```{r}
-jsonlite::toJSON(.vals$tree)
-igraph::bfs(.vals$tree, root = "root", mode = "out")
-
-root <- rlang::new_environment()
-root$test <- rlang::new_environment()
-root$test$hello <- rlang::new_environment(data = list(a = 1:5))
-as.list(root)
-```
-
-
-```{r}
-assignInNamespace(".vals", backup, ns = "shinyTreelabel")
-shiny::shinyApp(d3_tree_ui(), d3_tree_server)
-```
-
-
-
-
-
-
-```{r}
-sce
-```
 

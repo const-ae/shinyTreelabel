@@ -1,73 +1,5 @@
 
 
-.vals <- new.env(parent = emptyenv())
-
-#' Prepare App
-#'
-#' @export
-prepare_shiny_treelabel <- function(data, treelabels = where(is_treelabel),
-                                    design = ~ 1,
-                                    pseudobulk_by = NULL,
-                                    metaanalysis_over = NULL,
-                                    gene_expr_by = NULL,
-                                    contrasts = vars(Intercept = cond()),
-                                    col_data = NULL,
-                                    count_assay = "counts",
-                                    seurat_assay = "RNA",
-                                    treelabel_threshold = 0.5,
-                                    reduced_dims = NULL){
-  if(is.matrix(data) || is(data, "Matrix")){
-    counts <- data
-    if(is.null(col_data)){
-      stop("If 'data' is a matrix, the 'col_data' must not be 'NULL'")
-    }
-    if("PCA" %in% reduced_dims){
-      logcounts <- transformGamPoi::shifted_log_transform(counts)
-      dim_reductions <- list(PCA = irlba::prcomp_irlba(t(logcounts), n = 2)$x)
-    }else{
-      dim_reductions <- list()
-    }
-  }else if(is(data, "SummarizedExperiment")){
-    counts <- SummarizedExperiment::assay(data, count_assay)
-    col_data <- cbind(SummarizedExperiment::colData(data), col_data)
-    dim_reductions <- lapply(SingleCellExperiment::reducedDims(data), \(x) x[,1:2,drop=FALSE])
-    if(is.null(reduced_dims)){
-      reduced_dims <- SingleCellExperiment::reducedDimNames(data)
-    }
-  }else if(inherits(data, "Seurat")){
-    counts <- data[[seurat_assay]]$counts
-    col_data <- bind_cols(data[[]], col_data)
-    red <- SeuratObject::Reductions(data)
-    dim_reductions <- lapply(red, \(name) SeuratObject::Embeddings(data, reduction = name)[,1:2,drop=FALSE])
-    names(dim_reductions) <- red
-    if(is.null(reduced_dims)){
-      reduced_dims <- red
-    }
-  }else{
-    stop("Cannot handle 'data' of class ", toString(class(data), width = 60))
-  }
-  contrasts <- rlang::quos_auto_name(contrasts)
-  design_variables <- lemur:::design_variable_to_quosures(design, data = col_data)
-  col_data <- as_tibble(col_data) |>
-    mutate(across({{treelabels}}, \(x) tl_modify(x, .scores >= treelabel_threshold))) |>
-    mutate(across(all_of(vapply(design_variables, rlang::as_name, character(1L))), as.factor))
-
-
-  vec <- vctrs::vec_ptype_common(!!! dplyr::select(col_data, where(is_treelabel)))
-
-
-  .vals$col_data <- col_data
-  .vals$treelabel_names <- names(tidyselect::eval_select({{treelabels}}, data = col_data))
-  .vals$tree <- tl_tree(vec)
-  .vals$root <- tl_tree_root(vec)
-  .vals$dim_reductions <- dim_reductions[intersect(names(dim_reductions), reduced_dims)]
-  .vals$counts <- counts
-  .vals$metaanalysis_over <- metaanalysis_over
-  .vals$gene_expr_by <- gene_expr_by
-  .vals$pseudobulk_by <- c(pseudobulk_by, design_variables)
-  .vals$design <- design
-  .vals$contrasts <- contrasts
-}
 
 #'
 #'
@@ -128,6 +60,7 @@ singlecell_treelabel_ui <- function(){
 #'
 #' @export
 singlecell_treelabel_server <- function(input, output, session){
+  check_init()
 
   ##### Treelabel selector
 
@@ -210,19 +143,14 @@ singlecell_treelabel_server <- function(input, output, session){
   psce <- reactive({
     req(cellTypeSelector())
     req(treelabelSelector())
-    print("Start psce")
-    celltype_sym <- rlang::sym(cellTypeSelector())
-    cell_sel <- .vals$col_data |>
-      mutate(..sel = (tl_eval(!!rlang::sym(treelabelSelector()), !!celltype_sym) == 1) %|% FALSE) |>
-      pull(..sel)
-    req(any(cell_sel))
-    extra_pseudobulk_vars <- if(! is.null(.vals$metaanalysis_over)){
-      vars(!! rlang::sym(.vals$metaanalysis_over))
+    print(paste0("Start psce"))
+    key <- paste0(treelabelSelector(), "-", cellTypeSelector())
+    psce <- if(is.null(.vals$precalc_res$psce[[key]])){
+      make_pseudobulk(treelabelSelector(), cellTypeSelector())
     }else{
-      vars()
+      print(paste0("Looking up ", key, " in .vals$precalc_res"))
+      .vals$precalc_res$psce[[key]]
     }
-    psce <- pseudobulk(.vals$counts, col_data = .vals$col_data,
-                       pseudobulk_by = c(.vals$pseudobulk_by, extra_pseudobulk_vars), filter = cell_sel)
     print("Done psce")
     psce
   }) |>
@@ -230,27 +158,14 @@ singlecell_treelabel_server <- function(input, output, session){
     bindEvent(cellTypeSelector(), treelabelSelector())
 
   full_de_results <- reactive({
+    req(psce())
     print("Start full_de_results")
-    if(is.null(psce()) || ncol(psce()) == 0){
-      return(NULL)
-    }
-    res <- if(! is.null(.vals$metaanalysis_over)){
-      meta_vals <- SummarizedExperiment::colData(psce())[[.vals$metaanalysis_over]]
-      levels <- unique(as.character(meta_vals))
-      res <- lapply(levels, \(level){
-        psce_subset <- psce()[,meta_vals == level]
-        if(ncol(psce_subset) > 0){
-          tryCatch({
-            de_limma(SingleCellExperiment::logcounts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
-          }, error = function(err){
-            NULL
-          })
-        }
-      })
-      names(res) <- levels
-      bind_rows(res, .id = .vals$metaanalysis_over)
+    key <- rlang::hash(psce())
+    res <- if(is.null(.vals$precalc_res$full_de[[key]])){
+      make_full_de_results(psce())
     }else{
-      de_limma(SingleCellExperiment::logcounts(psce()), .vals$design, SummarizedExperiment::colData(psce()), .vals$contrasts)
+      print(paste0("Looking up ", key, " in .vals$precalc_res"))
+      .vals$precalc_res$full_de[[key]]
     }
     print("Done full_de_results")
     res
@@ -258,34 +173,21 @@ singlecell_treelabel_server <- function(input, output, session){
     bindCache(psce()) |>
     bindEvent(psce())
 
-  de_result_meta_task <- ExtendedTask$new(function(full_de_results){
-    if(is.null(full_de_results) || is.null(.vals$metaanalysis_over) || length(unique(full_de_results[[.vals$metaanalysis_over]])) == 1){
-      NULL
-    }else{
-      promises::future_promise({
-        print("Start de_result_meta")
-        res <- full_de_results |> # we summarize over .vals$metaanalysis_over
-          arrange(name, contrast) |>
-          mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, lfc / t_statistic))) |>
-          filter(mean(is.finite(lfc_se)) >= 0.5, .by = c(name, contrast)) |>
-          summarize((\(yi, sei){
-            res <- quick_metafor(yi, sei)
-            tibble(lfc = res$b, lfc_se = res$se, pval = pmax(1e-22, res$pval), tau = sqrt(res$tau2))
-          })(lfc ,lfc_se),
-          .by = c(name, contrast)) |>
-          mutate(adj_pval = p.adjust(pval, method = "BH"), .by = contrast) |>
-          transmute(name, pval, adj_pval, t_statistic = lfc/lfc_se, lfc, contrast)
-        print("Done de_result_meta")
-        res
-      })
-    }
-  })
-
-  observeEvent(full_de_results(), {
-    print("Invoke de_result_meta_task")
+  de_result_meta <- reactive({
+    print("Start de_result_meta")
     req(full_de_results())
-    de_result_meta_task$invoke(full_de_results())
-  })
+    key <- rlang::hash(full_de_results())
+    res <- if(is.null(.vals$precalc_res$meta[[key]])){
+      make_meta_analysis(full_de_results())
+    }else{
+      print(paste0("Looking up ", key, " in .vals$precalc_res"))
+      .vals$precalc_res$meta[[key]]
+    }
+    print("Done de_result_meta")
+    res
+  }) |>
+    bindCache(full_de_results()) |>
+    bindEvent(full_de_results())
 
   de_result_display <- reactive({
     if(is.null(full_de_results()) || nrow(full_de_results()) == 0){
@@ -296,7 +198,7 @@ singlecell_treelabel_server <- function(input, output, session){
       full_de_results() |>
         filter(!! rlang::sym(.vals$metaanalysis_over) == input$metaanalysisSelector)
     }else{
-      de_result_meta_task$result()
+      de_result_meta()
     }
   })
 
@@ -414,7 +316,7 @@ singlecell_treelabel_server <- function(input, output, session){
     if(! is.null(psce()) && sel_gene %in% rownames(psce())){
       res <- full_de_results() |> filter(name == sel_gene)
       if(! is.null(.vals$metaanalysis_over)){
-        meta_res <- de_result_meta_task$result() |> filter(name == sel_gene) |> mutate(!!metaanalysis_over_sym := "Meta")
+        meta_res <- de_result_meta() |> filter(name == sel_gene) |> mutate(!!metaanalysis_over_sym := "Meta")
         res <- bind_rows(res, meta_res) |>
           mutate(!!metaanalysis_over_sym := forcats::fct_relevel(as.factor(!!metaanalysis_over_sym), "Meta", after = 0L)) |>
           mutate(!!metaanalysis_over_sym := forcats::fct_rev(!! metaanalysis_over_sym))
@@ -454,21 +356,16 @@ singlecell_treelabel_server <- function(input, output, session){
 
     top_sel <- cellTypeSelectorDAView$top_selection()
     da_targets <- setdiff(cellTypeSelectorDAView$selected_nodes(), top_sel)
-    tidyr::expand_grid(..meta = unique(col_data_cp[[.vals$metaanalysis_over]]),
-                              ..contrast = .vals$contrasts) |>
-      rowwise() |>
-      group_map(\(dat, .){
-        sel_dat <- filter(col_data_cp, !!rlang::sym(.vals$metaanalysis_over) == dat$..meta)
-        res <- treelabel::test_abundance_changes(sel_dat, design = .vals$design,
-                                                 aggregate_by = all_of(colnames(aggr_by)),
-                                                 contrast = !!dat$..contrast[[1]],
-                                                 treelabels = all_of(sel_treelabel),
-                                                 targets = vars(!!!rlang::syms(da_targets)),
-                                                 reference = !! rlang::sym(top_sel))
-        res |>
-          mutate(..meta = dat$..meta, ..contrast = rlang::as_label(dat$..contrast[[1]]))
-      }) |>
-      dplyr::bind_rows()
+    key <- paste0(sel_treelabel, "-", top_sel)
+    res <- if(key %in% names(.vals$precalc_res$full_da)){
+      print(paste0("Looking up ", key, " in .vals$precalc_res$full_da"))
+      .vals$precalc_res$full_da[[key]] |>
+        filter(target %in% da_targets)
+    }else{
+      make_differential_abundance_analysis(col_data_cp, sel_treelabel, node = top_sel,
+                                           aggregate_by = all_of(colnames(aggr_by)), targets = vars(!!!rlang::syms(da_targets)))
+    }
+    res
   })
 
   da_meta_res <- reactive({
@@ -523,12 +420,62 @@ singlecell_treelabel_server <- function(input, output, session){
 }
 
 
+make_pseudobulk <- function(treelabel, celltype, return_selector=FALSE){
+  celltype_sym <- rlang::sym(celltype)
+  treelabel_sym <- rlang::sym(treelabel)
+  cell_sel <- .vals$col_data |>
+    mutate(..sel = (tl_eval(!! treelabel_sym, !!celltype_sym) == 1) %|% FALSE) |>
+    pull(..sel)
+  if(! any(cell_sel)){
+    if(return_selector){
+      list(psce = NULL, selector = cell_sel)
+    }else{
+      NULL
+    }
+  }else{
+    extra_pseudobulk_vars <- if(! is.null(.vals$metaanalysis_over)){
+      vars(!! rlang::sym(.vals$metaanalysis_over))
+    }else{
+      vars()
+    }
+    psce <- pseudobulk(.vals$counts, col_data = .vals$col_data, pseudobulk_by = c(.vals$pseudobulk_by, extra_pseudobulk_vars), filter = cell_sel)
+    if(return_selector){
+      list(psce = psce, selector = cell_sel)
+    }else{
+      psce
+    }
+  }
+}
+
 pseudobulk <- function(counts, col_data, pseudobulk_by, filter = TRUE){
   sce <- SingleCellExperiment::SingleCellExperiment(list(counts=counts), colData = col_data)
   sce <- sce[,filter]
   res <- glmGamPoi::pseudobulk(sce, group_by = pseudobulk_by, verbose = FALSE)
   SingleCellExperiment::logcounts(res) <- transformGamPoi::shifted_log_transform(res)
   res
+}
+
+make_full_de_results <- function(psce){
+  if(is.null(psce)){
+    NULL
+  }else if(! is.null(.vals$metaanalysis_over)){
+    meta_vals <- SummarizedExperiment::colData(psce)[[.vals$metaanalysis_over]]
+    levels <- unique(as.character(meta_vals))
+    res <- lapply(levels, \(level){
+      psce_subset <- psce[,meta_vals == level]
+      if(ncol(psce_subset) > 0){
+        tryCatch({
+          de_limma(SingleCellExperiment::logcounts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
+        }, error = function(err){
+          NULL
+        })
+      }
+    })
+    names(res) <- levels
+    bind_rows(res, .id = .vals$metaanalysis_over)
+  }else{
+    de_limma(SingleCellExperiment::logcounts(psce), .vals$design, SummarizedExperiment::colData(psce), .vals$contrasts)
+  }
 }
 
 de_limma <- function(values, design, col_data, quo_contrasts){
@@ -542,3 +489,40 @@ de_limma <- function(values, design, col_data, quo_contrasts){
   }))
 }
 
+make_meta_analysis <- function(full_de_results){
+  if(is.null(full_de_results) || ncol(full_de_results) == 0 || nrow(full_de_results) == 0){
+    NULL
+  }else{
+    full_de_results |> # we summarize over .vals$metaanalysis_over
+      arrange(name, contrast) |>
+      mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, lfc / t_statistic))) |>
+      filter(mean(is.finite(lfc_se)) >= 0.5, .by = c(name, contrast)) |>
+      summarize((\(yi, sei){
+        res <- quick_metafor(yi, sei)
+        tibble(lfc = res$b, lfc_se = res$se, pval = pmax(1e-22, res$pval), tau = sqrt(res$tau2))
+      })(lfc ,lfc_se),
+      .by = c(name, contrast)) |>
+      mutate(adj_pval = p.adjust(pval, method = "BH"), .by = contrast) |>
+      transmute(name, pval, adj_pval, t_statistic = lfc/lfc_se, lfc, contrast)
+  }
+}
+
+
+make_differential_abundance_analysis <- function(col_data, treelabel, node, aggregate_by,
+                                                 targets = NULL){
+  tidyr::expand_grid(..meta = unique(col_data[[.vals$metaanalysis_over]]),
+                     ..contrast = .vals$contrasts) |>
+    rowwise() |>
+    group_map(\(dat, .){
+      sel_dat <- filter(col_data, !!rlang::sym(.vals$metaanalysis_over) == dat$..meta)
+      res <- treelabel::test_abundance_changes(sel_dat, design = .vals$design,
+                                               aggregate_by = {{aggregate_by}},
+                                               contrast = !!dat$..contrast[[1]],
+                                               treelabels = all_of(treelabel),
+                                               targets = {{targets}},
+                                               reference = !! rlang::sym(node))
+      res |>
+        mutate(..meta = dat$..meta, ..contrast = rlang::as_label(dat$..contrast[[1]]))
+    }) |>
+    dplyr::bind_rows()
+}

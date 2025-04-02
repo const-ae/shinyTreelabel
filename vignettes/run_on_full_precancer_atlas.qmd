@@ -2,6 +2,13 @@
 title: "Untitled"
 ---
 
+
+```{r}
+#| label: setup
+options(paged.print=FALSE)
+```
+
+
 ```{r}
 library(shinyTreelabel)
 library(tidyverse)
@@ -22,16 +29,23 @@ adjusted_meta <- tibble(cell_id = colnames(seu)) |>
 sce <- Seurat::as.SingleCellExperiment(seu)
 rm(seu)
 ```
-
 ```{r}
-sel <- sample.int(ncol(sce), size = 1e4)
-sce_subset <- sce[,sel]
-adjusted_meta <- adjusted_meta[sel,]
+# sce_bckp <- sce
 ```
 
 
 ```{r}
-prepare_shiny_treelabel(sce_subset, col_data = adjusted_meta, design = ~ stage, 
+sce <- sce[,sce$cancer_type %in% c("LUAD", "BRCA", "LUSC", "PDAC")]
+sel <- sample.int(ncol(sce), size = 1e4)
+sce <- sce[,sel]
+adjusted_meta <- tibble(cell_id = sce$cell_id) |>
+  left_join(meta_data, by = "cell_id") |>
+  dplyr::select(-cell_id)
+```
+
+
+```{r}
+prepare_shiny_treelabel(sce, col_data = adjusted_meta, design = ~ stage, 
                         pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
                         gene_expr_by = "stage",
                         contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
