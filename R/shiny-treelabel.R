@@ -112,7 +112,7 @@ singlecell_treelabel_server <- function(input, output, session){
         mutate(coloring = tl_tree_filter(!! rlang::sym(.vals$treelabel_names[1]), \(x) sel_nodes) |>
                  tl_name()) |>
         mutate(coloring = factor(ifelse(coloring == .vals$root, NA, coloring), levels = sel_nodes)) |>
-        ggplot(aes(x = reddim[,1], y = reddim[,2], color = coloring)) +
+        ggplot(aes(x = .data$reddim[,1], y = .data$reddim[,2], color = .data$coloring)) +
           geom_point(size = 0.3) +
           coord_fixed() +
           labs(x = paste0(input$redDimSelector, "1"), y = paste0(input$redDimSelector, "2")) +

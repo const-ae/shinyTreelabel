@@ -80,10 +80,19 @@ check_init <- function(){
 
 
 
+#' Speed-up app by precalculating the results
 #'
+#' @param spec the specification which results to precalculate. Either a
+#'   string 'all' or 'nothing' or a list with two elements 'treelabels' and
+#'   'nodes' which list the elements to precalculate.
+#' @param verbose should a progress bar be printed.
+#' @param results a list produced by `precalculate_results`.
+#'
+#' @returns a list with all the precalculated results that needs to be
+#'   passed to `install_precalculated_results`.
 #'
 #' @export
-precalculate_results <- function(spec, verbose = TRUE){
+precalculate_results <- function(spec = c("all", "nothing"), verbose = TRUE){
   check_init()
   valid_precalculate_spec <- (is.character(spec) && precalculateprecalculates[1] %in% c("all", "nothing")) ||
     (is.list(spec) && all(names(spec) %in% c("treelabels", "nodes")))
@@ -101,21 +110,25 @@ precalculate_results <- function(spec, verbose = TRUE){
   res <- list(psce = list(), full_de = list(), meta = list(),
               full_da = list())
   psce_key_lookup <- rlang::new_environment()
-  i <- 1
-  total_steps <- length(treelabelSelectors) * length(nodes)
-  n <- nodes[1]
-  ts <- treelabelSelectors[1]
-  if(verbose){
-    cli::cli_progress_message("Step {i}/{total_steps}: {ts} calculating {n}")
-  }
   # Calculate psce
   for(ts in treelabelSelectors){
     if(check_treelabel_precalculuate_spec(ts, spec)){
+      i <- 1
+      total_steps <- length(nodes)
+      n <- .vals$root
+      step <- "init"
+      if(verbose){
+        cli::cli_progress_step("Step {i}/{total_steps} | ETA: {cli::pb_eta}: '{ts}' calculating '{n}' ({step})",
+                               msg_done = paste0(" Finished '", ts, "'"), total = total_steps)
+      }
       for(n in nodes){
         if(check_nodes_precalculuate_spec(n, spec)){
-          if(verbose) cli::cli_progress_update()
+          step <- "pseudobulk"
+          if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, set = i), error = \(err){})
           psce_val <-  make_pseudobulk(ts, n, return_selector = TRUE)
           key <- rlang::hash(psce_val$selector)
+          step <- "differential abundance"
+          if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 0.25), error = \(err){})
           full_da <- make_differential_abundance_analysis(col_data_cp, treelabel = ts, node = n,
                                                           aggregate_by = all_of(colnames(aggr_by)))
           if(exists(key, envir = psce_key_lookup)){
@@ -125,9 +138,13 @@ precalculate_results <- function(spec, verbose = TRUE){
           }else{
             psce_key_lookup[[key]] <- paste0(ts, "-", n)
             psce <- psce_val$psce
+            step <- "differential expression"
+            if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 0.25), error = \(err){})
             full_de_res <- suppressWarnings({
               make_full_de_results(psce)
             })
+            step <- "meta analysis"
+            if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 0.25), error = \(err){})
             meta_res <- suppressWarnings({
               make_meta_analysis(full_de_res)
             })
@@ -138,6 +155,9 @@ precalculate_results <- function(spec, verbose = TRUE){
           res$meta[[rlang::hash(full_de_res)]] <- meta_res
         }
         i <- i+1
+      }
+      if(verbose) {
+        cli::cli_process_done()
       }
     }
   }

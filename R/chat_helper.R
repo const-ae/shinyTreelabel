@@ -12,6 +12,6 @@ Base your analysis on prior knowledge available in your training data.
 
 Be concise: Avoid unnecessary words.
 Be factual: Do not editorialize.
-Be specific: Avoid overly general statements such as ‘the proteins are involved in various cellular processes’.
+Be specific: Avoid overly general statements such as 'the proteins are involved in various cellular processes'.
 )"
 

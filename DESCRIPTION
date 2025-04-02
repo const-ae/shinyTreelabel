@@ -12,26 +12,41 @@ Encoding: UTF-8
 LazyData: false
 Depends: R (>= 4.1)
 Imports: 
+    treelabel,
     dplyr,
     tidyr,
     tibble,
+    forcats,
+    rlang,
+    vctrs,
+    scales,
+    stringr,
+    tidyselect,
     ggplot2,
+    ggbeeswarm,
+    cli,
+    colorspace,
     shiny,
+    htmltools,
     shinycssloaders,
     shinychat,
-    future,
-    promises,
-    treelabel,
+    ellmer, 
+    DT,
     igraph,
-    matrixStats (>= 1.4.0),
+    irlba,
+    methods,
     SingleCellExperiment,
     SummarizedExperiment,
     Seurat,
-    limma
+    SeuratObject,
+    limma,
+    glmGamPoi,
+    lemur,
+    transformGamPoi
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Suggests: 
     knitr,
     quarto
-VignetteBuilder: quarto
+

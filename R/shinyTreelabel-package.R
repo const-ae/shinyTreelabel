@@ -12,4 +12,6 @@ NULL
 
 
 #' @importFrom rlang `%|%`
+#' @importFrom methods is
+#' @importFrom stats p.adjust pnorm qnorm
 NULL

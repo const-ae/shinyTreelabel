@@ -22,8 +22,8 @@ library(tidyverse)
 
 ```{r}
 devtools::load_all(".")
-# seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/main_seurat_data.RDS")
-seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/CD4T_v2_18Feb2025.RDS")
+seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/main_seurat_data.RDS")
+# seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/CD4T_v2_18Feb2025.RDS")
 meta_data <- readr::read_tsv("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/meta_data.tsv.gz") |>
   left_join(readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/all_treelabels.RDS"), by = "cell_id") |>
   dplyr::select(- starts_with("manual_cell_type"))
@@ -35,30 +35,34 @@ meta_data <- readr::read_tsv("~/Documents/Work_Projects/precancer-atlas-code/dat
 # SeuratObject::Assays(seu)
 # tmp <- seu[["RNA"]]
 sce <- Seurat::as.SingleCellExperiment(seu)
+SummarizedExperiment::colData(sce) <- SummarizedExperiment::colData(sce) |>
+  as_tibble() |>
+  left_join(meta_data, by = "cell_id") |>
+  S4Vectors::DataFrame()
+`%not_in%` <- Negate(`%in%`)
+data_filter <- rlang::quo(disease_state %not_in% c("pre_non_malignant", "pre_virus") & cancer != "LIHC")
+sel_cells <- sce$cell_id[rlang::eval_tidy(data_filter,  as_tibble(SummarizedExperiment::colData(sce)))]
+sce <- sce[,which(sce$cell_id %in% sel_cells)]
 rm(seu)
 ```
 
-
 ```{r}
 sce <- sce[,sce$cancer_type %in% c("LUAD", "BRCA", "LUSC", "PDAC")]
-sce <- sce[,sample.int(ncol(sce), size = 5000)]
-adjusted_meta <- tibble(cell_id = sce$cell_id) |>
-  left_join(meta_data, by = "cell_id") |>
-  dplyr::select(-cell_id)
+# sce <- sce[,sample.int(ncol(sce), size = 5000)]
 ```
 
 ```{r}
-# init_shinyTreelabel(seu, reduced_dims = "umap", col_data = cd4_meta)
-init_shinyTreelabel(sce, col_data = adjusted_meta, design = ~ stage, 
-                        pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
-                        gene_expr_by = "stage",
-                        contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
-                                        cond(stage = "Tumor") - cond(stage = "Normal"),
-                                        cond(stage = "Tumor") - cond(stage = "Pre")),
-                        treelabels = c("label_manual", "label_immuneA", "label_lung"))
-
+init_shinyTreelabel(sce, col_data = SummarizedExperiment::colData(sce), design = ~ stage + cohort, 
+                    pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
+                    gene_expr_by = "stage",
+                    contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
+                                    # cond(stage = "Tumor") - cond(stage = "Normal"),
+                                    # cond(stage = "Tumor") - cond(stage = "Pre")
+                                    ),
+                    treelabels = c("label_manual", "label_immuneA", "label_lung"),
+                    de_test = "glmGamPoi")
 system.time(
-  res <- precalculate_results(list(treelabels = "all", nodes = "all"))
+  res <- precalculate_results(list(treelabels = "label_manual", nodes = c("root", "Treg")))
 )
 install_precalculated_results(res)
 .vals <- rlang::ns_env("shinyTreelabel")$.vals
