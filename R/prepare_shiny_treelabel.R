@@ -4,16 +4,19 @@
 #'
 #' @export
 init_shinyTreelabel <- function(data, treelabels = where(is_treelabel),
-                                    design = ~ 1,
-                                    pseudobulk_by = NULL,
-                                    metaanalysis_over = NULL,
-                                    gene_expr_by = NULL,
-                                    contrasts = vars(Intercept = cond()),
-                                    col_data = NULL,
-                                    count_assay = "counts",
-                                    seurat_assay = "RNA",
-                                    treelabel_threshold = 0.5,
-                                    reduced_dims = NULL){
+                                design = ~ 1,
+                                pseudobulk_by = NULL,
+                                metaanalysis_over = NULL,
+                                gene_expr_by = NULL,
+                                contrasts = vars(Intercept = cond()),
+                                de_test = c("limma", "glmGamPoi"),
+                                col_data = NULL,
+                                count_assay = "counts",
+                                seurat_assay = "RNA",
+                                treelabel_threshold = 0.5,
+                                reduced_dims = NULL){
+
+  de_test <- rlang::arg_match(de_test)
   if(is.matrix(data) || is(data, "Matrix")){
     counts <- data
     if(is.null(col_data)){
@@ -65,13 +68,14 @@ init_shinyTreelabel <- function(data, treelabels = where(is_treelabel),
   .vals$pseudobulk_by <- c(pseudobulk_by, design_variables)
   .vals$design <- design
   .vals$contrasts <- contrasts
+  .vals$de_test <- de_test
   .vals$precalc_res <- list(psce = list(), full_de = list(), meta = list())
 }
 
 
 check_init <- function(){
   stopifnot(all(c("col_data","treelabel_names", "tree", "root",  "dim_reductions",  "counts", "metaanalysis_over",
-                  "gene_expr_by", "pseudobulk_by", "design", "contrasts", "precalc_res") %in% names(.vals)))
+                  "gene_expr_by", "pseudobulk_by", "design", "contrasts", "de_test", "precalc_res") %in% names(.vals)))
 }
 
 

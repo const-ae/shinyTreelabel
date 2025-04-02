@@ -464,11 +464,21 @@ make_full_de_results <- function(psce){
     res <- lapply(levels, \(level){
       psce_subset <- psce[,meta_vals == level]
       if(ncol(psce_subset) > 0){
-        tryCatch({
-          de_limma(SingleCellExperiment::logcounts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
-        }, error = function(err){
-          NULL
-        })
+        if(.vals$de_test == "limma"){
+          tryCatch({
+            de_limma(SingleCellExperiment::logcounts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
+          }, error = function(err){
+            NULL
+          })
+        }else if(.vals$de_test == "glmGamPoi"){
+          tryCatch({
+            de_glmGamPoi(SingleCellExperiment::counts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
+          }, error = function(err){
+            NULL
+          })
+        }else{
+          stop("Invalid de_test argument: '", de_test, "'")
+        }
       }
     })
     names(res) <- levels
@@ -489,13 +499,25 @@ de_limma <- function(values, design, col_data, quo_contrasts){
   }))
 }
 
+de_glmGamPoi <- function(values, design, col_data, quo_contrasts){
+  fit <- glmGamPoi::glm_gp(values, design, col_data = col_data, size_factors = "ratio",
+                           ridge_penalty = 1e-5)
+  bind_rows(lapply(seq_along(quo_contrasts), \(idx){
+    cntrst <- quo_contrasts[[idx]]
+    res <- glmGamPoi::test_de(fit, !!cntrst)
+    res$contrast <- names(quo_contrasts)[idx]
+    res
+  })) |>
+    mutate(t_statistic = sign(lfc) * sqrt(abs(f_statistic)))
+}
+
 make_meta_analysis <- function(full_de_results){
   if(is.null(full_de_results) || ncol(full_de_results) == 0 || nrow(full_de_results) == 0){
     NULL
   }else{
     full_de_results |> # we summarize over .vals$metaanalysis_over
       arrange(name, contrast) |>
-      mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, lfc / t_statistic))) |>
+      mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, abs(lfc) / abs(t_statistic)))) |>
       filter(mean(is.finite(lfc_se)) >= 0.5, .by = c(name, contrast)) |>
       summarize((\(yi, sei){
         res <- quick_metafor(yi, sei)

@@ -12,6 +12,7 @@ init_shinyTreelabel(
   metaanalysis_over = NULL,
   gene_expr_by = NULL,
   contrasts = vars(Intercept = cond()),
+  de_test = c("limma", "glmGamPoi"),
   col_data = NULL,
   count_assay = "counts",
   seurat_assay = "RNA",
