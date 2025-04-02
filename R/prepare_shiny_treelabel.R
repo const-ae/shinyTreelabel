@@ -121,8 +121,12 @@ precalculate_results <- function(spec, verbose = TRUE){
           }else{
             psce_key_lookup[[key]] <- paste0(ts, "-", n)
             psce <- psce_val$psce
-            full_de_res <- make_full_de_results(psce)
-            meta_res <- make_meta_analysis(full_de_res)
+            full_de_res <- suppressWarnings({
+              make_full_de_results(psce)
+            })
+            meta_res <- suppressWarnings({
+              make_meta_analysis(full_de_res)
+            })
           }
           res$full_da[[paste0(ts, "-", n)]] <- full_da
           res$psce[[paste0(ts, "-", n)]] <- psce
