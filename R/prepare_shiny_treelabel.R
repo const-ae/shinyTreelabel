@@ -48,10 +48,13 @@ init_shinyTreelabel <- function(data, treelabels = where(is_treelabel),
     stop("Cannot handle 'data' of class ", toString(class(data), width = 60))
   }
   contrasts <- rlang::quos_auto_name(contrasts)
-  design_variables <- lemur:::design_variable_to_quosures(design, data = col_data)
+  design_variables <- if(rlang::is_function(design)){
+    lemur:::design_variable_to_quosures(design(col_data), data = col_data)
+  }else{
+    lemur:::design_variable_to_quosures(design, data = col_data)
+  }
   col_data <- as_tibble(col_data) |>
-    mutate(across({{treelabels}}, \(x) tl_modify(x, .scores >= treelabel_threshold))) |>
-    mutate(across(all_of(vapply(design_variables, rlang::as_name, character(1L))), as.factor))
+    mutate(across({{treelabels}}, \(x) tl_modify(x, .scores >= treelabel_threshold)))
 
 
   vec <- vctrs::vec_ptype_common(!!! dplyr::select(col_data, where(is_treelabel)))

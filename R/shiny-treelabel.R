@@ -264,7 +264,7 @@ singlecell_treelabel_server <- function(input, output, session){
   output$deVolcano <- renderPlot({
     print("Start renderPlot deVolcano")
     de_res <- de_result_display()
-    res <- if(is.null(de_res)){
+    res <- if(is.null(de_res) || nrow(de_res) == 0){
       NULL
     }else{
       de_result_display() |>
@@ -464,15 +464,20 @@ make_full_de_results <- function(psce){
     res <- lapply(levels, \(level){
       psce_subset <- psce[,meta_vals == level]
       if(ncol(psce_subset) > 0){
+        design_act <- if(rlang::is_function(.vals$design)){
+          .vals$design(SummarizedExperiment::colData(psce_subset))
+        }else{
+          .vals$design
+        }
         if(.vals$de_test == "limma"){
           tryCatch({
-            de_limma(SingleCellExperiment::logcounts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
+            de_limma(SingleCellExperiment::logcounts(psce_subset), design_act, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
           }, error = function(err){
             NULL
           })
         }else if(.vals$de_test == "glmGamPoi"){
           tryCatch({
-            de_glmGamPoi(SingleCellExperiment::counts(psce_subset), .vals$design, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
+            de_glmGamPoi(SingleCellExperiment::counts(psce_subset), design_act, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
           }, error = function(err){
             NULL
           })
@@ -484,8 +489,26 @@ make_full_de_results <- function(psce){
     names(res) <- levels
     bind_rows(res, .id = .vals$metaanalysis_over)
   }else{
-    de_limma(SingleCellExperiment::logcounts(psce), .vals$design, SummarizedExperiment::colData(psce), .vals$contrasts)
+    design_act <- if(rlang::is_function(.vals$design)){
+      .vals$design(SummarizedExperiment::colData(psce))
+    }else{
+      .vals$design
+    }
+    de_limma(SingleCellExperiment::logcounts(psce), design_act, SummarizedExperiment::colData(psce), .vals$contrasts)
   }
+}
+
+modify_design <- function(design, col_data){
+  design_variables <- lemur:::design_variable_to_quosures(design, data = col_data)
+  valid_vars <- vapply(design_variables, \(var){
+    covar <- rlang::eval_tidy(var, data = col_data)
+    if(is.numeric(covar)){
+      TRUE
+    }else{
+      length(unique(covar)) > 1
+    }
+  }, FUN.VALUE = logical(1L))
+  design_variables[valid_vars]
 }
 
 de_limma <- function(values, design, col_data, quo_contrasts){
@@ -537,7 +560,12 @@ make_differential_abundance_analysis <- function(col_data, treelabel, node, aggr
     rowwise() |>
     group_map(\(dat, .){
       sel_dat <- filter(col_data, !!rlang::sym(.vals$metaanalysis_over) == dat$..meta)
-      res <- treelabel::test_abundance_changes(sel_dat, design = .vals$design,
+      design_act <- if(rlang::is_function(.vals$design)){
+        .vals$design(sel_dat)
+      }else{
+        .vals$design
+      }
+      res <- treelabel::test_abundance_changes(sel_dat, design = design_act,
                                                aggregate_by = {{aggregate_by}},
                                                contrast = !!dat$..contrast[[1]],
                                                treelabels = all_of(treelabel),

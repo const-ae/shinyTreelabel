@@ -12,6 +12,7 @@ options(paged.print=FALSE)
 ```{r}
 library(shinyTreelabel)
 library(tidyverse)
+library(SingleCellExperiment)
 ```
 
 
@@ -22,45 +23,39 @@ meta_data <- readr::read_tsv("~/Documents/Work_Projects/precancer-atlas-code/dat
   dplyr::select(- starts_with("manual_cell_type"))
 
 
-adjusted_meta <- tibble(cell_id = colnames(seu)) |>
-  left_join(meta_data, by = "cell_id") |>
-  dplyr::select(-cell_id)
-
 sce <- Seurat::as.SingleCellExperiment(seu)
+colData(sce) <- colData(sce) |>
+  as_tibble() |>
+  left_join(meta_data, by = "cell_id") |>
+  S4Vectors::DataFrame()
+`%not_in%` <- Negate(`%in%`)
+data_filter <- rlang::quo(disease_state %not_in% c("pre_non_malignant", "pre_virus") & cancer != "LIHC")
+sel_cells <- sce$cell_id[rlang::eval_tidy(data_filter,  as_tibble(colData(sce)))]
+sce <- sce[,which(sce$cell_id %in% sel_cells)]
 rm(seu)
 ```
+
 ```{r}
-# sce_bckp <- sce
+# sce <- sce[,sce$cancer_type %in% c("LUAD", "BRCA", "LUSC", "PDAC")]
+# sel <- sample.int(ncol(sce), size = 1e4)
+# sce <- sce[,sel]
+
 ```
 
 
 ```{r}
-sce <- sce[,sce$cancer_type %in% c("LUAD", "BRCA", "LUSC", "PDAC")]
-sel <- sample.int(ncol(sce), size = 1e4)
-sce <- sce[,sel]
-adjusted_meta <- tibble(cell_id = sce$cell_id) |>
-  left_join(meta_data, by = "cell_id") |>
-  dplyr::select(-cell_id)
+init_shinyTreelabel(sce, col_data = colData(sce), design = ~ stage + cohort, 
+                    pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
+                    gene_expr_by = "stage",
+                    contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
+                                    cond(stage = "Tumor") - cond(stage = "Normal"),
+                                    cond(stage = "Tumor") - cond(stage = "Pre")),
+                    treelabels = c("label_manual", "label_immuneA", "label_lung", "label_tilC"),
+                    de_test = "glmGamPoi")
+precalculate_results(list(treelabels = "label_manual", nodes = c("root", "Treg"))) |>
+  install_precalculated_results()
 ```
 
-
-```{r}
-prepare_shiny_treelabel(sce, col_data = adjusted_meta, design = ~ stage, 
-                        pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
-                        gene_expr_by = "stage",
-                        contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
-                                        cond(stage = "Tumor") - cond(stage = "Normal"),
-                                        cond(stage = "Tumor") - cond(stage = "Pre")),
-                        treelabels = c("label_manual", "label_immuneA", "label_lung",
-                                       "label_liver", "label_tilC")
-                        )
-```
-
-
-```{r}
-future::plan(future::multisession())
-options(future.globals.maxSize= 20 * 1024^3) # 20GB
-```
 
 
 ```{r}
