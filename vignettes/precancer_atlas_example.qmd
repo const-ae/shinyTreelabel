@@ -52,6 +52,7 @@ rm(seu)
 ```
 
 ```{r}
+sce$stage <- as.factor(sce$stage)
 init_shinyTreelabel(sce, col_data = SummarizedExperiment::colData(sce), 
                     design = \(dat){
                       if(length(unique(dat$cohort)) > 1) ~ stage + cohort
@@ -67,6 +68,14 @@ init_shinyTreelabel(sce, col_data = SummarizedExperiment::colData(sce),
 system.time(
   tmp <- precalculate_results(list(treelabels = "label_manual", nodes = c("Treg")))
 )
+```
+
+```{r}
+res <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/shinyTreelabel_precalc_result.RDS")
+
+```
+
+```{r}
 res <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/shinyTreelabel_precalc_result.RDS")
 install_precalculated_results(res)
 .vals <- rlang::ns_env("shinyTreelabel")$.vals
@@ -85,5 +94,17 @@ shiny::shinyApp(singlecell_treelabel_ui(), singlecell_treelabel_server)
 ```{r}
 mod_des <- modify_design(~ a + b, col_data = tibble(a = "a", b = rep(LETTERS[1:3], each  = 3)))
 mod_des <- 
+```
+
+
+```{r}
+meta_data |>
+  dplyr::select(cell_id, cancer, stage, label = label_manual) |>
+  print(n = 15)
+
+meta_data |>
+  transmute(cell_id, cancer, stage, label = as_tibble(tl_score_matrix(label_manual))) |>
+  mutate(label = label[,colSums(label, na.rm=TRUE) > 0]) |>
+  print(n = 15)
 ```
 

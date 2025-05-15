@@ -39,12 +39,15 @@ rm(seu)
 # sce <- sce[,sce$cancer_type %in% c("LUAD", "BRCA", "LUSC", "PDAC")]
 # sel <- sample.int(ncol(sce), size = 1e4)
 # sce <- sce[,sel]
-
 ```
 
 
 ```{r}
-init_shinyTreelabel(sce, col_data = colData(sce), design = ~ stage + cohort, 
+init_shinyTreelabel(sce, col_data = colData(sce), 
+                    design = \(dat){
+                      if(length(unique(dat$cohort)) > 1) ~ stage + cohort
+                      else ~ stage
+                    },
                     pseudobulk_by = vars(donor), metaanalysis_over = "cancer",
                     gene_expr_by = "stage",
                     contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
@@ -52,8 +55,14 @@ init_shinyTreelabel(sce, col_data = colData(sce), design = ~ stage + cohort,
                                     cond(stage = "Tumor") - cond(stage = "Pre")),
                     treelabels = c("label_manual", "label_immuneA", "label_lung", "label_tilC"),
                     de_test = "glmGamPoi")
-precalculate_results(list(treelabels = "label_manual", nodes = c("root", "Treg"))) |>
-  install_precalculated_results()
+# res <- precalculate_results(list(treelabels = "label_manual", nodes = c("root", "Treg"))) 
+res <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/shinyTreelabel_precalc_result.RDS")
+res2 <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/shinyTreelabel_precalc_result_lung.RDS")
+res_comb <- lapply(names(res), \(n){
+  c(res[[n]], res2[[n]])
+})
+names(res_comb) <- names(res)
+install_precalculated_results(res_comb)
 ```
 
 
