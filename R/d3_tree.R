@@ -16,7 +16,23 @@ treeSelectorUI <- function(id){
   )
 }
 
-treeSelectorServer <- function(id, selection_mode = c("single", "multiple", "hierarchical"),
+color_generator_fnc <- function(selection_mode){
+  function(selected_nodes){
+    if(selection_mode == "single"){
+      color_choice_fnc <- \(.) "orange"
+    }else if(selection_mode %in% c("multiple", "hierarchical")){
+      color_choice_fnc <- if(length(selected_nodes) > 0){
+        scales::col_factor(scales::pal_hue()(length(selected_nodes)), domain = selected_nodes)
+      }else{
+        \(.) "orange"
+      }
+    }else{
+      stop("Illegal selection_mode: ", selection_model)
+    }
+  }
+}
+
+treeSelectorServer <- function(id, spec, selection_mode = c("single", "multiple", "hierarchical"),
                                update_selectable_nodes = NULL, update_selected_node = NULL){
   selection_mode <- match.arg(selection_mode)
   if(! is.null(update_selectable_nodes)){
@@ -30,19 +46,15 @@ treeSelectorServer <- function(id, selection_mode = c("single", "multiple", "hie
     update_selected_node <- reactiveVal(NULL)
   }
 
+  color_choice_fnc_gen <- color_generator_fnc(selection_mode)
+
   make_tree_for_javascript <- function(selected_nodes, top_selection, selectable_nodes = NULL){
     if(is.null(selectable_nodes)){
-      selectable_nodes <- igraph::V(.vals$tree)$name
-    }
-    if(selection_mode == "single"){
-      color_choice_fnc <- \(.) "orange"
-    }else if(selection_mode %in% c("multiple", "hierarchical")){
-      color_choice_fnc <- if(length(selected_nodes) > 0){
-        scales::col_factor(scales::pal_hue()(length(selected_nodes)), domain = selected_nodes)
-      }
+      selectable_nodes <- igraph::V(spec$tree)$name
     }
 
-    nested_list <- igraph_tree_to_nested_list(.vals$tree, .vals$root, callback = \(x){
+    color_choice_fnc <- color_choice_fnc_gen(selected_nodes)
+    nested_list <- igraph_tree_to_nested_list(spec$tree, spec$root, callback = \(x){
       if(! is.null(top_selection) && x == top_selection){
         list(selected = TRUE, selectionColor = "orange", top_selection = TRUE, selectable = TRUE)
       }else if(x %in% selected_nodes){
@@ -55,7 +67,7 @@ treeSelectorServer <- function(id, selection_mode = c("single", "multiple", "hie
 
 
   moduleServer(id, function(input, output, session){
-    session$sendCustomMessage(NS(id, "firstTreeFullData"), igraph_tree_to_nested_list(.vals$tree, .vals$root, \(x) list(selected=FALSE)))
+    session$sendCustomMessage(NS(id, "firstTreeFullData"), igraph_tree_to_nested_list(spec$tree, spec$root, \(x) list(selected=FALSE)))
 
     selected_nodes <- character(0L)
     top_selection <- NULL
@@ -81,7 +93,7 @@ treeSelectorServer <- function(id, selection_mode = c("single", "multiple", "hie
           selected_nodes <<- remove_element_from_character_vector(selected_nodes, input$d3TreeClick)
           top_selection <<- NULL
         }else if(length(selected_nodes) > 1){
-          top_selection <<- igraph_smallest_common_ancestor(selected_nodes, .vals$tree)
+          top_selection <<- igraph_smallest_common_ancestor(selected_nodes, spec$tree)
         }
       }
       nested_list <- make_tree_for_javascript(selected_nodes, top_selection, update_selectable_nodes())
@@ -92,7 +104,7 @@ treeSelectorServer <- function(id, selection_mode = c("single", "multiple", "hie
     })
 
     observeEvent(update_selectable_nodes(), {
-      if(! all(update_selectable_nodes() %in% igraph::V(.vals$tree)$name)){
+      if(! all(update_selectable_nodes() %in% igraph::V(spec$tree)$name)){
         stop("Illegal update to selectable nodes: ", toString(update_selectable_nodes()))
       }
       selected_nodes <<- intersect(selected_nodes, update_selectable_nodes())
@@ -127,27 +139,6 @@ treeSelectorServer <- function(id, selection_mode = c("single", "multiple", "hie
 
 
 
-
-# d3_tree_ui <- function(){
-#   resources <- system.file("www", package = "shinyTreelabel")
-#   navbarPage(title = "Explore your single cell data",
-#              tabPanel("Overview (UMAP etc.)",
-#                       treeSelectorUI('umap_selector')),
-#              tabPanel("Differential Expression",
-#                       selectInput("treelabelSelector", "Treelabel selector", choices = letters, selected = "A"),
-#                       treeSelectorUI('de_selector')
-#              ),
-#              tabPanel("Differential Abundance",
-#                       treeSelectorUI('da_selector')),
-#              tabPanel("Gene-level analysis")
-#   )
-# }
-#
-# d3_tree_server <- function(input, output, session){
-#   treeSelectorServer("umap_selector", selection_mode = "multiple")
-#   treeSelectorServer("de_selector")
-#   treeSelectorServer("da_selector", selection_mode = "hierarchical")
-# }
 
 igraph_tree_to_nested_list <- function(tree, root = "root", callback = \(x) NULL){
   all_names <- igraph::V(tree)$name

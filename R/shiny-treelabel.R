@@ -4,57 +4,201 @@
 #'
 #'
 #' @export
-singlecell_treelabel_ui <- function(){
-  de_res_ui <- shiny::div(
-    conditionalPanel("output.deResultsAreNULL", shiny::p("No cells available that match selection.")),
-    conditionalPanel("! output.deResultsAreNULL", shinycssloaders::withSpinner(plotOutput(outputId = "deVolcano"))),
-    conditionalPanel("! output.deResultsAreNULL", shinycssloaders::withSpinner(DT::DTOutput(outputId = "deTable"))),
-    shinychat::chat_ui("deLLMChat", placeholder = "Feel free to ask follow-up questions")
-  )
-
-  metaanalysis_selector <- if(! is.null(.vals$metaanalysis_over)){
-    levels <- if(is.factor(.vals$col_data[[.vals$metaanalysis_over]])){
-      levels(.vals$col_data[[.vals$metaanalysis_over]])
-    }else{
-      unique(as.character(.vals$col_data[[.vals$metaanalysis_over]]))
-    }
-    selectInput("metaanalysisSelector", "Display results for:",
-                choices = c(if(length(levels >= 2)) "Meta-Analysis", levels), selected = levels[1])
-  }
+singlecell_treelabel_ui <- function(spec){
+  # de_res_ui <- shiny::div(
+  #   conditionalPanel("output.deResultsAreNULL", shiny::p("No cells available that match selection.")),
+  #   conditionalPanel("! output.deResultsAreNULL", shinycssloaders::withSpinner(plotOutput(outputId = "deVolcano"))),
+  #   conditionalPanel("! output.deResultsAreNULL", shinycssloaders::withSpinner(DT::DTOutput(outputId = "deTable"))),
+  #   shinychat::chat_ui("deLLMChat", placeholder = "Feel free to ask follow-up questions")
+  # )
+  #
+  # metaanalysis_selector <- if(! is.null(obj$metaanalysis_over)){
+  #   levels <- if(is.factor(obj$col_data[[obj$metaanalysis_over]])){
+  #     levels(obj$col_data[[obj$metaanalysis_over]])
+  #   }else{
+  #     unique(as.character(obj$col_data[[obj$metaanalysis_over]]))
+  #   }
+  #   selectInput("metaanalysisSelector", "Display results for:",
+  #               choices = c(if(length(levels >= 2)) "Meta-Analysis", levels), selected = levels[1])
+  # }
 
 
   navbarPage(title = "Explore your single cell data",
              tabPanel("Overview (UMAP etc.)",
-                      selectInput("treelabelSelector0", "Treelabel selector", choices = .vals$treelabel_names,
-                                  selected = .vals$treelabel_names[1], multiple = FALSE),
+                      selectInput("treelabelSelector0", "Treelabel selector", choices = spec$treelabel_names,
+                                  selected = spec$treelabel_names[1], multiple = FALSE),
                       treeSelectorUI('celltype_selectorUMAP'),
-                      selectInput("redDimSelector", "Dimension reduction", choices = names(.vals$dim_reductions)),
+                      selectInput("redDimSelector", "Dimension reduction", choices = spec$dim_reduction_names),
                       plotOutput(outputId = "redDimPlot")
              ),
-             tabPanel("Differential Expression",
-                      selectInput("treelabelSelector1", "Treelabel selector", choices = .vals$treelabel_names,
-                                  selected = .vals$treelabel_names[1], multiple = FALSE),
-                      treeSelectorUI('celltype_selectorDEView'),
-                      metaanalysis_selector,
-                      de_res_ui
-             ),
+             # tabPanel("Differential Expression",
+             #          selectInput("treelabelSelector1", "Treelabel selector", choices = obj$treelabel_names,
+             #                      selected = obj$treelabel_names[1], multiple = FALSE),
+             #          treeSelectorUI('celltype_selectorDEView'),
+             #          metaanalysis_selector,
+             #          de_res_ui
+             # ),
              tabPanel("Differential Abundance",
-                      selectInput("treelabelSelector2", "Treelabel selector", choices = .vals$treelabel_names,
-                                  selected = .vals$treelabel_names[1], multiple = FALSE),
+                      selectInput("treelabelSelector2", "Treelabel selector", choices = spec$treelabel_names,
+                                  selected = spec$treelabel_names[1], multiple = FALSE),
                       treeSelectorUI('celltype_selectorDiffAbundance'),
                       shinycssloaders::withSpinner(plotOutput(outputId = "diffAbundancePlotsOverview")),
-                      shinycssloaders::withSpinner(uiOutput("diffAbundancePlotsFullPlaceholder"))),
-             tabPanel("Gene-level analysis",
-                      selectInput("treelabelSelector3", "Treelabel selector", choices = .vals$treelabel_names,
-                                  selected = .vals$treelabel_names[1], multiple = FALSE),
-                      treeSelectorUI('celltype_selectorGeneView'),
-                      selectizeInput("geneSelector", "Gene", choices = rownames(.vals$counts)[1:10], selected = rownames(.vals$counts)[1],
-                                     options = list(maxOptions = 50, placeholder = "select a gene")),
-                      shinycssloaders::withSpinner(plotOutput(outputId = "selGeneExpressionStratified")),
-                      shinycssloaders::withSpinner(plotOutput(outputId = "selGeneExpressionContrasted"))
-             )
+                      shinycssloaders::withSpinner(uiOutput("diffAbundancePlotsFullPlaceholder"))
+                      ),
+             # tabPanel("Gene-level analysis",
+             #          selectInput("treelabelSelector3", "Treelabel selector", choices = obj$treelabel_names,
+             #                      selected = obj$treelabel_names[1], multiple = FALSE),
+             #          treeSelectorUI('celltype_selectorGeneView'),
+             #          selectizeInput("geneSelector", "Gene", choices = rownames(obj$counts)[1:10], selected = rownames(obj$counts)[1],
+             #                         options = list(maxOptions = 50, placeholder = "select a gene")),
+             #          shinycssloaders::withSpinner(plotOutput(outputId = "selGeneExpressionStratified")),
+             #          shinycssloaders::withSpinner(plotOutput(outputId = "selGeneExpressionContrasted"))
+             # )
   )
 }
+
+
+singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output, session){
+  ##### Treelabel selector
+  # A lot of boiler plate, but this just keeps the treelabelSelectors across the tabs in sync
+  treelabelSelector <- reactiveVal("")
+  observeEvent(input$treelabelSelector0, {
+    treelabelSelector(input$treelabelSelector0)
+    updateSelectInput(session, inputId = "treelabelSelector1", selected = input$treelabelSelector0)
+    updateSelectInput(session, inputId = "treelabelSelector2", selected = input$treelabelSelector0)
+    updateSelectInput(session, inputId = "treelabelSelector3", selected = input$treelabelSelector0)
+  })
+  observeEvent(input$treelabelSelector1, {
+    treelabelSelector(input$treelabelSelector1)
+    updateSelectInput(session, inputId = "treelabelSelector0", selected = input$treelabelSelector1)
+    updateSelectInput(session, inputId = "treelabelSelector2", selected = input$treelabelSelector1)
+    updateSelectInput(session, inputId = "treelabelSelector3", selected = input$treelabelSelector1)
+  })
+  observeEvent(input$treelabelSelector2, {
+    treelabelSelector(input$treelabelSelector2)
+    updateSelectInput(session, inputId = "treelabelSelector0", selected = input$treelabelSelector2)
+    updateSelectInput(session, inputId = "treelabelSelector1", selected = input$treelabelSelector2)
+    updateSelectInput(session, inputId = "treelabelSelector3", selected = input$treelabelSelector2)
+  })
+  observeEvent(input$treelabelSelector3, {
+    treelabelSelector(input$treelabelSelector3)
+    updateSelectInput(session, inputId = "treelabelSelector0", selected = input$treelabelSelector3)
+    updateSelectInput(session, inputId = "treelabelSelector1", selected = input$treelabelSelector3)
+    updateSelectInput(session, inputId = "treelabelSelector2", selected = input$treelabelSelector3)
+  })
+
+  selectable_nodes <- reactiveVal(igraph::V(spec$tree)$name)
+  observeEvent(treelabelSelector(), {
+    req(treelabelSelector())
+    tl_vec <- obj$col_data()[[treelabelSelector()]]
+    all_nodes <- igraph::V(spec$tree)$name
+    score_mat <- tl_score_matrix(tl_vec)
+    selectable <- colSums(score_mat > 0, na.rm=TRUE) > 0
+    selectable_nodes(colnames(score_mat)[selectable])
+  })
+
+  ########## Reduced Dimension View ##########
+  cellTypeSelectorUMAPView <- treeSelectorServer("celltype_selectorUMAP", spec, selection_mode = "multiple",
+                                                 update_selectable_nodes = selectable_nodes)
+  color_choice_fnc_gen <- color_generator_fnc("multiple")
+
+  reduced_dim <- reactive({
+    obj$dim_reductions(input$redDimSelector)
+  })
+
+  output$redDimPlot <- renderPlot({
+    req(reduced_dim())
+
+    sel_nodes <- as.character(cellTypeSelectorUMAPView$selected_nodes())
+    color_map <- structure(color_choice_fnc_gen(sel_nodes)(sel_nodes), names = sel_nodes)
+    obj$col_data() |>
+      mutate(reddim = reduced_dim()) |>
+      mutate(coloring = tl_name(tl_tree_filter(!! rlang::sym(spec$treelabel_names[1]), \(x) setdiff(sel_nodes, spec$root)))) |>
+      mutate(coloring = factor(ifelse(coloring == spec$root, NA, coloring), levels = sel_nodes)) |>
+      ggplot(aes(x = .data$reddim[,1], y = .data$reddim[,2], color = .data$coloring)) +
+        geom_point(size = 0.3) +
+        coord_fixed() +
+        labs(x = paste0(input$redDimSelector, "1"), y = paste0(input$redDimSelector, "2")) +
+        scale_color_manual(values = color_map, drop = FALSE) +
+        guides(color = guide_legend(override.aes = list(size = 2)))
+
+  })
+
+  ####### Differential abundance output
+  cellTypeSelectorDAView <- treeSelectorServer("celltype_selectorDiffAbundance", spec,
+                                               selection_mode = "hierarchical",
+                                               update_selectable_nodes = selectable_nodes)
+
+  da_results <- reactive({
+    req(cellTypeSelectorDAView$selected_nodes(),
+        cellTypeSelectorDAView$top_selection(),
+        treelabelSelector())
+
+    obj$da_results(
+      treelabel = as.character(treelabelSelector()),
+      top_selection = cellTypeSelectorDAView$top_selection(),
+      targets = setdiff(cellTypeSelectorDAView$selected_nodes(), cellTypeSelectorDAView$top_selection())
+    )
+  })
+
+  da_meta_res <- reactive({
+    req(da_results())
+    req(cellTypeSelectorDAView$selected_nodes(),
+        cellTypeSelectorDAView$top_selection(),
+        treelabelSelector())
+
+    obj$da_meta_results(
+      treelabel = as.character(treelabelSelector()),
+      top_selection = cellTypeSelectorDAView$top_selection(),
+      targets = setdiff(cellTypeSelectorDAView$selected_nodes(), cellTypeSelectorDAView$top_selection())
+    )
+
+  })
+  #
+  #
+  output$diffAbundancePlotsOverview <- renderPlot({
+    req(da_meta_res())
+
+    da_meta_res() |>
+      mutate(conf.lower = LFC - qnorm(0.975) * LFC_se,
+             conf.high = LFC + qnorm(0.975) * LFC_se) |>
+      mutate(includes_zero = conf.lower < 0 & conf.high > 0) |>
+      mutate(target = factor(target, levels = cellTypeSelectorDAView$selected_nodes())) |>
+      ggplot(aes(x = LFC, y = target)) +
+        geom_vline(xintercept = 0) +
+        geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = includes_zero)) +
+        scale_color_manual(values = c("FALSE" = "red", "TRUE" = colorspace::lighten("red", 0.7))) +
+        scale_x_continuous(limits = c(-3.2, 3.2), expand = expansion(add = 0), oob = scales::oob_squish) +
+        facet_wrap(vars(..contrast))
+  })
+
+  output$diffAbundancePlotsFull <- renderPlot({
+    req(da_results())
+    req(da_meta_res())
+
+    da_results() |>
+      bind_rows(da_meta_res() |> mutate(..meta = "Meta")) |>
+      mutate(..meta = forcats::fct_relevel(..meta, "Meta", after = 0)) |>
+      mutate(..meta = forcats::fct_rev(..meta)) |>
+      mutate(conf.lower = LFC - qnorm(0.975) * LFC_se,
+             conf.high = LFC + qnorm(0.975) * LFC_se) |>
+      mutate(includes_zero = conf.lower < 0 & conf.high > 0) |>
+      mutate(target = forcats::fct_rev(factor(target, levels = cellTypeSelectorDAView$selected_nodes()))) |>
+      ggplot(aes(x = LFC, y = ..meta)) +
+        geom_vline(xintercept = 0) +
+        geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = includes_zero)) +
+        scale_color_manual(values = c("FALSE" = "red", "TRUE" = colorspace::lighten("red", 0.7))) +
+        facet_grid(vars(target), vars(..contrast)) +
+        scale_x_continuous(limits = c(-3.2, 3.2), expand = expansion(add = 0), oob = scales::oob_squish)
+  })
+
+  output$diffAbundancePlotsFullPlaceholder <- renderUI({
+    plotOutput(outputId = "diffAbundancePlotsFull",
+               height = length(unique(da_meta_res()$target)) * 400
+               )
+  })
+
+}}
 
 #'
 #'
@@ -101,7 +245,7 @@ singlecell_treelabel_server <- function(input, output, session){
   })
 
   ########## Reduced Dimension View ##########
-  cellTypeSelectorUMAPView <- treeSelectorServer("celltype_selectorUMAP", selection_mode = "multiple",
+  cellTypeSelectorUMAPView <- treeSelectorServer("celltype_selectorUMAP", obj, selection_mode = "multiple",
                                                  update_selectable_nodes = selectable_nodes)
 
   output$redDimPlot <- renderPlot({
@@ -124,14 +268,14 @@ singlecell_treelabel_server <- function(input, output, session){
     }
   })
 
-  cellTypeSelector <- reactiveVal("Immune")
-  cellTypeSelectorGeneView <- treeSelectorServer("celltype_selectorGeneView",
+  cellTypeSelector <- reactiveVal(obj$root)
+  cellTypeSelectorGeneView <- treeSelectorServer("celltype_selectorGeneView", obj,
                                                  update_selectable_nodes = selectable_nodes,
                                                  update_selected_node = cellTypeSelector)
   observeEvent(cellTypeSelectorGeneView$selected_nodes(), {
     cellTypeSelector(cellTypeSelectorGeneView$selected_nodes())
   })
-  cellTypeSelectorDEView <- treeSelectorServer("celltype_selectorDEView",
+  cellTypeSelectorDEView <- treeSelectorServer("celltype_selectorDEView", obj,
                                                update_selectable_nodes = selectable_nodes,
                                                update_selected_node = cellTypeSelector)
   observeEvent(cellTypeSelectorDEView$selected_nodes(), {
@@ -338,8 +482,8 @@ singlecell_treelabel_server <- function(input, output, session){
 
 
   ############## Differential Abundance ################
-  cellTypeSelectorDAView <- treeSelectorServer("celltype_selectorDiffAbundance", selection_mode = "hierarchical",
-                                               update_selectable_nodes = selectable_nodes)
+  cellTypeSelectorDAView <- treeSelectorServer("celltype_selectorDiffAbundance", obj,
+                                               selection_mode = "hierarchical", update_selectable_nodes = selectable_nodes)
 
   da_results <- reactive({
     req(cellTypeSelectorDAView$selected_nodes())
@@ -553,26 +697,4 @@ make_meta_analysis <- function(full_de_results){
 }
 
 
-make_differential_abundance_analysis <- function(col_data, treelabel, node, aggregate_by,
-                                                 targets = NULL){
-  tidyr::expand_grid(..meta = unique(col_data[[.vals$metaanalysis_over]]),
-                     ..contrast = .vals$contrasts) |>
-    rowwise() |>
-    group_map(\(dat, .){
-      sel_dat <- filter(col_data, !!rlang::sym(.vals$metaanalysis_over) == dat$..meta)
-      design_act <- if(rlang::is_function(.vals$design)){
-        .vals$design(sel_dat)
-      }else{
-        .vals$design
-      }
-      res <- treelabel::test_abundance_changes(sel_dat, design = design_act,
-                                               aggregate_by = {{aggregate_by}},
-                                               contrast = !!dat$..contrast[[1]],
-                                               treelabels = all_of(treelabel),
-                                               targets = {{targets}},
-                                               reference = !! rlang::sym(node))
-      res |>
-        mutate(..meta = dat$..meta, ..contrast = rlang::as_label(dat$..contrast[[1]]))
-    }) |>
-    dplyr::bind_rows()
-}
+

@@ -1,0 +1,52 @@
+---
+title: "Untitled"
+---
+
+
+
+
+```{r}
+sce <- muscData::Kang18_8vs8()
+```
+
+```{r}
+tree_def <- igraph::graph_from_literal(
+  root - Lymphoid : Myeloid,
+  Lymphoid - `B cells` : `T cells` : `NK cells`,
+  `T cells` - `CD4 T cells` : `CD8 T cells`,
+  Myeloid - `Monocytes`: `Dendritic cells` : `Megakaryocytes`,
+  Monocytes -  `CD14+ Monocytes` : `FCGR3A+ Monocytes`
+)
+
+sce$cell_label <- treelabel::treelabel(sce$cell, tree = tree_def)
+colData(sce)
+sce
+```
+
+
+```{r}
+spec <- init_shinyTreelabel(sce, treelabels = all_of("cell_label"),
+                          design = ~ stim,
+                          pseudobulk_by = vars(ind),
+                          metaanalysis_over = "multiplets",
+                          contrasts = vars(cond(stim = "stim") - cond(stim = "ctrl")),
+                          gene_expr_by = "stim",
+                          de_test = "limma")
+```
+
+
+```{r, paged.print=FALSE}
+precalc_res <- precalculate_results2(spec, sce, dbfile = "~/Downloads/result_cache/kang.duckdb")
+```
+
+```{r}
+run_shinyTreelabel(spec, col_data = as_tibble(colData(sce)), precalc_results = "~/Downloads/result_cache/kang.duckdb")
+```
+
+
+```{r, paged.print=FALSE}
+run_shinyTreelabel(spec, sce, precalc_results = precalc_res)
+```
+
+
+
