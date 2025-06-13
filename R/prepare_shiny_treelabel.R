@@ -25,15 +25,32 @@ run_shinyTreelabel <- function(spec, sce = NULL, col_data = NULL, precalc_result
         precalc_results$dim_reductions(name) %||% reducedDim(sce, name)
     },
     counts = \(gene, cell){
-      precalc_results$dim_reductions(name) %||% assay(sce, spec$count_assay_name)[gene,cell]
+      precalc_results$counts(gene, cell) %||% ({
+        mat <- assay(sce, spec$count_assay_name)
+        if(missing(gene) && missing(cell)) mat
+        else if(missing(gene)) mat[,cell,drop=FALSE]
+        else if(missing(cell)) mat[gene,,drop=FALSE]
+        else mat[gene,cell,drop=FALSE]
+      })
     },
     da_results = \(treelabel, top_selection, targets){
       precalc_results$da_results(treelabel, top_selection, targets) %||%
-        get_differential_abundance_results(obj, spec, treelabel, top_selection, targets)
+        calculate_differential_abundance_results(obj, spec, treelabel, top_selection, targets)
     },
     da_meta_results = \(treelabel, top_selection, targets){
       precalc_results$da_meta_results(treelabel, top_selection, targets) %||%
-        get_meta_differential_abundance_results(obj, spec, treelabel, top_selection, targets)
+        calculate_meta_differential_abundance_results(obj$da_results(treelabel, top_sel, da_targets))
+    },
+    de_results = \(treelabel, celltype, gene){
+      precalc_results$de_results(treelabel, celltype, gene) %||%
+        get_differential_expression_results(obj, spec, treelabel, celltype, gene)
+    },
+    de_meta_results = \(treelabel, celltype, gene){
+      precalc_results$de_meta_results(treelabel, celltype, gene) %||%
+        calculate_meta_differential_expression_results(
+          precalc_results$de_results(treelabel, celltype, gene) %||%
+            get_differential_expression_results(obj, spec, treelabel, celltype, gene)
+        )
     }
   )
 
@@ -75,12 +92,20 @@ init_shinyTreelabel <- function(sce, treelabels = where(is_treelabel),
     mutate(across({{treelabels}}, \(x) tl_modify(x, .scores >= treelabel_threshold)))
   vec <- vctrs::vec_ptype_common(!!! dplyr::select(col_data, where(is_treelabel)))
   treelabel_names <- names(tidyselect::eval_select({{treelabels}}, data = col_data))
+  metaanalysis_levels <- if(is.null(metaanalysis_over)){
+    NULL
+  }else if(is.factor(col_data[[metaanalysis_over]])){
+    levels(col_data[[metaanalysis_over]])
+  }else{
+    unique(as.character(col_data[[metaanalysis_over]]))
+  }
 
   list(
     treelabel_names = treelabel_names,
     tree = tl_tree(vec),
     root = tl_tree_root(vec),
     metaanalysis_over = metaanalysis_over,
+    metaanalysis_levels = metaanalysis_levels,
     gene_expr_by = gene_expr_by,
     pseudobulk_by = c(pseudobulk_by, design_variables),
     design = design,
@@ -105,9 +130,10 @@ check_init <- function(){
 
 
 
-precalculate_results2 <- function(spec, sce, output = c("dim_reductions", "da", "de", "de_meta", "pseudobulks"),
+precalculate_results2 <- function(spec, sce, output = c("da", "de", "de_meta"),
                                   treelabel_sel = NULL, dbfile = ":memory:", verbose = TRUE){
   storage <- PrecalculatedResults$new(dbfile)
+  storage$clear()
 
   col_data <- as_tibble(colData(sce))
   storage$add_col_data(col_data)
@@ -123,7 +149,8 @@ precalculate_results2 <- function(spec, sce, output = c("dim_reductions", "da", 
   for(new_name in colnames(aggr_by)){
     col_data_cp[[new_name]] <- aggr_by[[new_name]]
   }
-  if("dim_reductions" %in% output){
+
+  if(TRUE){ # Always store the dim_reductions
     all_redDims <- reducedDims(sce)[spec$dim_reduction_names] |>
       lapply(\(x) if(ncol(x) == 0){
         matrix(0, nrow = length(spec$gene_names), ncol = 2)
@@ -141,25 +168,58 @@ precalculate_results2 <- function(spec, sce, output = c("dim_reductions", "da", 
       i <- 1; total_steps <- length(nodes)
       n <- spec$root; step <- "init"
       if(verbose){
-        cli::cli_progress_step("Step {i}/{total_steps} | ETA: {cli::pb_eta}: '{ts}' calculating '{n}' ({step})",
-                               msg_done = paste0(" Finished '", ts, "'"), total = total_steps)
+        cli::cli_progress_step("DA Step {i}/{total_steps} | ETA: {cli::pb_eta}: '{ts}' calculating '{n}' ({step})",
+                               msg_done = paste0(" Finished '", ts, "' DA analysis"), total = total_steps)
       }
       for(n in nodes){
-        full_da <- make_differential_abundance_analysis(spec, col_data_cp, treelabel = ts, node = n,
+        full_da <- calculate_differential_abundance_results(spec, col_data_cp,  treelabel = ts, node = n,
                                                         aggregate_by = all_of(colnames(aggr_by)))
         if(nrow(full_da) > 0){
           full_da$top <- n
         }
         storage$add_da_rows(full_da)
+        i <- i+1
         if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 1), error = \(err){})
       }
-      i <- i+1
     }
     if(verbose) cli::cli_process_done()
     meta <- tbl(storage$con, "da") |>
       dplyr::collect() |>
       calculate_meta_differential_abundance_results()
     storage$add_da_meta_rows(meta)
+  }
+
+  if("de" %in% output){
+    counts <- assay(sce, spec$count_assay_name)
+    for(ts in treelabel_sel){
+      i <- 1; total_steps <- length(nodes)
+      n <- spec$root; step <- "init"
+      if(verbose){
+        cli::cli_progress_step("DE Step {i}/{total_steps} | ETA: {cli::pb_eta}: '{ts}' calculating '{n}' ({step})",
+                               msg_done = paste0(" Finished '", ts, "' DE analysis"), total = total_steps)
+      }
+      for(n in nodes){
+        full_de <- calculate_differential_expression_results(spec, col_data_cp, counts = counts, treelabel = ts,
+                                               celltype = n, aggregate_by = vars(!!! rlang::syms(colnames(aggr_by))))
+        if(nrow(full_de) > 0){
+          full_de$celltype <- n
+        }
+        storage$add_de_rows(full_de)
+        i <- i+1
+        if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 1), error = \(err){})
+      }
+    }
+  }
+  if("de_meta" %in% output && DBI::dbExistsTable(storage$con, "de")){
+    if(verbose) tryCatch(cli::cli_status("DE meta-analysis"))
+    full_data <- tbl(storage$con, "de") |>
+      dplyr::collect()
+    if(! is.null(full_data) && nrow(full_data) > 0){
+      meta <- full_data |>
+        calculate_meta_differential_expression_results()
+      storage$add_de_meta_rows(meta)
+    }
+    if(verbose) tryCatch(cli::cli_status_clear(result = "done", msg_done = paste0(" Finished '", ts, "' DE meta analysis")))
   }
 
   storage
@@ -215,7 +275,7 @@ precalculate_results <- function(spec = c("all", "nothing"), verbose = TRUE){
           key <- rlang::hash(psce_val$selector)
           step <- "differential abundance"
           if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 0.25), error = \(err){})
-          full_da <- make_differential_abundance_analysis(col_data_cp, treelabel = ts, node = n,
+          full_da <- calculate_differential_abundance_results(col_data_cp, treelabel = ts, node = n,
                                                           aggregate_by = all_of(colnames(aggr_by)))
           if(exists(key, envir = psce_key_lookup)){
             psce <- res$psce[[psce_key_lookup[[key]]]]

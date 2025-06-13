@@ -9,6 +9,14 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
       self$dbfile <- dbfile
       self$con <- DBI::dbConnect(duckdb::duckdb(), dbdir = dbfile)
     },
+    clear = function(){
+      DBI::dbRemoveTable(self$con, "da", fail_if_missing = FALSE)
+      DBI::dbRemoveTable(self$con, "da_meta", fail_if_missing = FALSE)
+      DBI::dbRemoveTable(self$con, "de", fail_if_missing = FALSE)
+      DBI::dbRemoveTable(self$con, "de_meta", fail_if_missing = FALSE)
+      DBI::dbRemoveTable(self$con, "col_data", fail_if_missing = FALSE)
+      DBI::dbRemoveTable(self$con, "reducedDimensions", fail_if_missing = FALSE)
+    },
 
     add_reducedDimensions_rows = function(reducedDimensions){
       DBI::dbWriteTable(self$con, "reducedDimensions", reducedDimensions, append = TRUE)
@@ -18,6 +26,12 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
     },
     add_da_meta_rows = function(da_results){
       DBI::dbWriteTable(self$con, "da_meta", da_results, append = TRUE)
+    },
+    add_de_rows = function(da_results){
+      DBI::dbWriteTable(self$con, "de", da_results, append = TRUE)
+    },
+    add_de_meta_rows = function(da_results){
+      DBI::dbWriteTable(self$con, "de_meta", da_results, append = TRUE)
     },
     add_col_data = function(col_data){
       DBI::dbWriteTable(self$con, "col_data", data.frame(x = object_to_string(col_data)),
@@ -94,6 +108,59 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
         }
         res <- dplyr::tbl(self$con, "da_meta") |>
           dplyr::filter(!! tl_test, !! top_sel_test, !! target_test)
+        if(lazy){
+          res
+        }else{
+          dplyr::collect(res)
+        }
+      }
+    },
+    de_results = \(treelabel, celltype, gene, lazy = FALSE){
+      if("de" %in% DBI::dbListTables(self$con)){
+        tl_test <- if(! rlang::is_missing(treelabel)){
+          rlang::quo(.data$treelabel %in% .env$treelabel)
+        }else{
+          TRUE
+        }
+        celltype_test <- if(! rlang::is_missing(celltype)){
+          rlang::quo(.data$celltype %in% .env$celltype)
+        }else{
+          TRUE
+        }
+        gene_test <- if(! rlang::is_missing(gene)){
+          rlang::quo(.data$gene %in% .env$gene)
+        }else{
+          TRUE
+        }
+        res <- dplyr::tbl(self$con, "de") |>
+          dplyr::filter(!! tl_test, !! celltype_test, !! gene_test)
+        if(lazy){
+          res
+        }else{
+          dplyr::collect(res)
+        }
+      }
+    },
+    de_meta_results = \(treelabel, celltype, gene, lazy = FALSE){
+      if("de_meta" %in% DBI::dbListTables(self$con)){
+        tl_test <- if(! rlang::is_missing(treelabel)){
+          rlang::quo(.data$treelabel %in% .env$treelabel)
+        }else{
+          TRUE
+        }
+        celltype_test <- if(! rlang::is_missing(celltype)){
+          rlang::quo(.data$celltype %in% .env$celltype)
+        }else{
+          TRUE
+        }
+        gene_test <- if(! rlang::is_missing(gene)){
+          rlang::quo(.data$gene %in% .env$gene)
+        }else{
+          TRUE
+        }
+
+        res <- dplyr::tbl(self$con, "de_meta") |>
+          dplyr::filter(!! tl_test, !! celltype_test, !! gene_test)
         if(lazy){
           res
         }else{

@@ -31,22 +31,20 @@ spec <- init_shinyTreelabel(sce, treelabels = all_of("cell_label"),
                           metaanalysis_over = "multiplets",
                           contrasts = vars(cond(stim = "stim") - cond(stim = "ctrl")),
                           gene_expr_by = "stim",
-                          de_test = "limma")
+                          de_test = "glmGamPoi")
 ```
 
 
 ```{r, paged.print=FALSE}
-precalc_res <- precalculate_results2(spec, sce, dbfile = "~/Downloads/result_cache/kang.duckdb")
+precalc_res <- precalculate_results2(spec, sce, dbfile = "~/Downloads/result_cache/kang.duckdb", output = c("de", "da"))
+saveRDS(spec, "~/Downloads/result_cache/kang.spec.RDS")
 ```
-
-```{r}
-run_shinyTreelabel(spec, col_data = as_tibble(colData(sce)), precalc_results = "~/Downloads/result_cache/kang.duckdb")
-```
-
 
 ```{r, paged.print=FALSE}
-run_shinyTreelabel(spec, sce, precalc_results = precalc_res)
+run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/kang.duckdb")
 ```
+
+
 
 
 

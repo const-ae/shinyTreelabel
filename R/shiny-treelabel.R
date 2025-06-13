@@ -11,16 +11,12 @@ singlecell_treelabel_ui <- function(spec){
   #   conditionalPanel("! output.deResultsAreNULL", shinycssloaders::withSpinner(DT::DTOutput(outputId = "deTable"))),
   #   shinychat::chat_ui("deLLMChat", placeholder = "Feel free to ask follow-up questions")
   # )
-  #
-  # metaanalysis_selector <- if(! is.null(obj$metaanalysis_over)){
-  #   levels <- if(is.factor(obj$col_data[[obj$metaanalysis_over]])){
-  #     levels(obj$col_data[[obj$metaanalysis_over]])
-  #   }else{
-  #     unique(as.character(obj$col_data[[obj$metaanalysis_over]]))
-  #   }
-  #   selectInput("metaanalysisSelector", "Display results for:",
-  #               choices = c(if(length(levels >= 2)) "Meta-Analysis", levels), selected = levels[1])
-  # }
+
+  metaanalysis_selector <- if(! is.null(spec$metaanalysis_over)){
+    levels <- spec$metaanalysis_levels
+    selectInput("metaanalysisSelector", "Display results for:",
+                choices = c(if(length(levels >= 2)) "Meta-Analysis", levels), selected = levels[1])
+  }
 
 
   navbarPage(title = "Explore your single cell data",
@@ -31,13 +27,14 @@ singlecell_treelabel_ui <- function(spec){
                       selectInput("redDimSelector", "Dimension reduction", choices = spec$dim_reduction_names),
                       plotOutput(outputId = "redDimPlot")
              ),
-             # tabPanel("Differential Expression",
-             #          selectInput("treelabelSelector1", "Treelabel selector", choices = obj$treelabel_names,
-             #                      selected = obj$treelabel_names[1], multiple = FALSE),
-             #          treeSelectorUI('celltype_selectorDEView'),
-             #          metaanalysis_selector,
-             #          de_res_ui
-             # ),
+             tabPanel("Differential Expression",
+                      selectInput("treelabelSelector1", "Treelabel selector", choices = spec$treelabel_names,
+                                  selected = spec$treelabel_names[1], multiple = FALSE),
+                      treeSelectorUI('celltype_selectorDEView'),
+                      metaanalysis_selector,
+                      shinycssloaders::withSpinner(plotOutput(outputId = "deVolcano")),
+                      shinycssloaders::withSpinner(DT::DTOutput(outputId = "deTable"))
+             ),
              tabPanel("Differential Abundance",
                       selectInput("treelabelSelector2", "Treelabel selector", choices = spec$treelabel_names,
                                   selected = spec$treelabel_names[1], multiple = FALSE),
@@ -124,14 +121,13 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
 
   })
 
-  ####### Differential abundance output
+  ####### Differential abundance output #######
   cellTypeSelectorDAView <- treeSelectorServer("celltype_selectorDiffAbundance", spec,
                                                selection_mode = "hierarchical",
                                                update_selectable_nodes = selectable_nodes)
 
   da_results <- reactive({
-    req(cellTypeSelectorDAView$selected_nodes(),
-        cellTypeSelectorDAView$top_selection(),
+    req(cellTypeSelectorDAView$selected_nodes(), cellTypeSelectorDAView$top_selection(),
         treelabelSelector())
 
     obj$da_results(
@@ -142,10 +138,8 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
   })
 
   da_meta_res <- reactive({
-    req(da_results())
-    req(cellTypeSelectorDAView$selected_nodes(),
-        cellTypeSelectorDAView$top_selection(),
-        treelabelSelector())
+    req(da_results(), cellTypeSelectorDAView$selected_nodes(),
+        cellTypeSelectorDAView$top_selection(), treelabelSelector())
 
     obj$da_meta_results(
       treelabel = as.character(treelabelSelector()),
@@ -154,8 +148,8 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
     )
 
   })
-  #
-  #
+
+
   output$diffAbundancePlotsOverview <- renderPlot({
     req(da_meta_res())
 
@@ -194,8 +188,66 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
 
   output$diffAbundancePlotsFullPlaceholder <- renderUI({
     plotOutput(outputId = "diffAbundancePlotsFull",
-               height = length(unique(da_meta_res()$target)) * 400
-               )
+               height = length(unique(da_meta_res()$target)) * 400)
+  })
+
+  ####### Differential expression output #######
+  cellTypeSelector <- reactiveVal(spec$root)
+  cellTypeSelectorGeneView <- treeSelectorServer("celltype_selectorGeneView", spec,
+                                update_selectable_nodes = selectable_nodes, update_selected_node = cellTypeSelector)
+  observeEvent(cellTypeSelectorGeneView$selected_nodes(), cellTypeSelector(cellTypeSelectorGeneView$selected_nodes()))
+  cellTypeSelectorDEView <- treeSelectorServer("celltype_selectorDEView", spec,
+                                update_selectable_nodes = selectable_nodes, update_selected_node = cellTypeSelector)
+  observeEvent(cellTypeSelectorDEView$selected_nodes(), cellTypeSelector(cellTypeSelectorDEView$selected_nodes()))
+
+  de_results <- reactive({
+    req(cellTypeSelector, treelabelSelector())
+    obj$de_results(
+      treelabel = as.character(treelabelSelector()),
+      celltype = cellTypeSelector()
+    )
+  })
+
+  de_meta_results <- reactive({
+    req(cellTypeSelector, treelabelSelector())
+    obj$de_meta_results(
+      treelabel = as.character(treelabelSelector()),
+      celltype = cellTypeSelector()
+    )
+  })
+
+  de_result_display <- reactive({
+    req(de_results())
+    if(is.null(spec$metaanalysis_over)){
+      de_results()
+    }else if(input$metaanalysisSelector != "Meta-Analysis"){
+      de_results() |>
+        filter(!! rlang::sym(spec$metaanalysis_over) == input$metaanalysisSelector)
+    }else{
+      de_meta_results()
+    }
+  })
+
+  output$deTable <- DT::renderDT({
+    req(de_result_display())
+    col_is_numeric <- vapply(de_result_display(), is.numeric, FUN.VALUE = logical(1L))
+    slice_min(de_result_display(), pval, n = 50, with_ties = FALSE, by = contrast) |>
+      DT::datatable() |>
+      DT::formatSignif(which(col_is_numeric))
+  })
+  output$deVolcano <- renderPlot({
+    req(de_result_display())
+    de_result_display() |>
+      ggplot(aes(x = lfc, y = -log10(pval))) +
+      geom_point(aes(color = adj_pval < 0.1)) +
+      geom_hline(data = \(x) x |> group_by(contrast) |> filter(adj_pval < 0.1) |> slice_max(pval, n = 1, with_ties = FALSE),
+                 aes(yintercept = -log10(pval))) +
+      ggrepel::geom_text_repel(data = \(x) slice_min(x, pval, n = 10, with_ties = FALSE, by = contrast),
+                               aes(label = name), size = 4) +
+      facet_wrap(vars(contrast)) +
+      scale_x_continuous(limits = c(-3.2, 3.2), expand = expansion(add = 0), oob = scales::oob_squish) +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+      scale_color_manual(values = c("TRUE" = "black", "FALSE" = "lightgrey"))
   })
 
 }}
@@ -506,8 +558,9 @@ singlecell_treelabel_server <- function(input, output, session){
       .vals$precalc_res$full_da[[key]] |>
         filter(target %in% da_targets)
     }else{
-      make_differential_abundance_analysis(col_data_cp, sel_treelabel, node = top_sel,
-                                           aggregate_by = all_of(colnames(aggr_by)), targets = vars(!!!rlang::syms(da_targets)))
+      calculate_differential_abundance_results(col_data_cp, sel_treelabel, node = top_sel,
+                                           aggregate_by = all_of(colnames(aggr_by)),
+                                           targets = vars(!!!rlang::syms(da_targets)))
     }
     res
   })
@@ -561,139 +614,6 @@ singlecell_treelabel_server <- function(input, output, session){
     plotOutput(outputId = "diffAbundancePlotsFull",
                height = length(unique(da_meta_res()$target)) * 400)
   })
-}
-
-
-make_pseudobulk <- function(treelabel, celltype, return_selector=FALSE){
-  celltype_sym <- rlang::sym(celltype)
-  treelabel_sym <- rlang::sym(treelabel)
-  cell_sel <- .vals$col_data |>
-    mutate(..sel = (tl_eval(!! treelabel_sym, !!celltype_sym) == 1) %|% FALSE) |>
-    pull(..sel)
-  if(! any(cell_sel)){
-    if(return_selector){
-      list(psce = NULL, selector = cell_sel)
-    }else{
-      NULL
-    }
-  }else{
-    extra_pseudobulk_vars <- if(! is.null(.vals$metaanalysis_over)){
-      vars(!! rlang::sym(.vals$metaanalysis_over))
-    }else{
-      vars()
-    }
-    psce <- pseudobulk(.vals$counts, col_data = .vals$col_data, pseudobulk_by = c(.vals$pseudobulk_by, extra_pseudobulk_vars), filter = cell_sel)
-    if(return_selector){
-      list(psce = psce, selector = cell_sel)
-    }else{
-      psce
-    }
-  }
-}
-
-pseudobulk <- function(counts, col_data, pseudobulk_by, filter = TRUE){
-  sce <- SingleCellExperiment::SingleCellExperiment(list(counts=counts), colData = col_data)
-  sce <- sce[,filter]
-  res <- glmGamPoi::pseudobulk(sce, group_by = pseudobulk_by, verbose = FALSE)
-  SingleCellExperiment::logcounts(res) <- transformGamPoi::shifted_log_transform(res)
-  res
-}
-
-make_full_de_results <- function(psce){
-  if(is.null(psce)){
-    NULL
-  }else if(! is.null(.vals$metaanalysis_over)){
-    meta_vals <- SummarizedExperiment::colData(psce)[[.vals$metaanalysis_over]]
-    levels <- unique(as.character(meta_vals))
-    res <- lapply(levels, \(level){
-      psce_subset <- psce[,meta_vals == level]
-      if(ncol(psce_subset) > 0){
-        design_act <- if(rlang::is_function(.vals$design)){
-          .vals$design(SummarizedExperiment::colData(psce_subset))
-        }else{
-          .vals$design
-        }
-        if(.vals$de_test == "limma"){
-          tryCatch({
-            de_limma(SingleCellExperiment::logcounts(psce_subset), design_act, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
-          }, error = function(err){
-            NULL
-          })
-        }else if(.vals$de_test == "glmGamPoi"){
-          tryCatch({
-            de_glmGamPoi(SingleCellExperiment::counts(psce_subset), design_act, SummarizedExperiment::colData(psce_subset), .vals$contrasts)
-          }, error = function(err){
-            NULL
-          })
-        }else{
-          stop("Invalid de_test argument: '", de_test, "'")
-        }
-      }
-    })
-    names(res) <- levels
-    bind_rows(res, .id = .vals$metaanalysis_over)
-  }else{
-    design_act <- if(rlang::is_function(.vals$design)){
-      .vals$design(SummarizedExperiment::colData(psce))
-    }else{
-      .vals$design
-    }
-    de_limma(SingleCellExperiment::logcounts(psce), design_act, SummarizedExperiment::colData(psce), .vals$contrasts)
-  }
-}
-
-modify_design <- function(design, col_data){
-  design_variables <- lemur:::design_variable_to_quosures(design, data = col_data)
-  valid_vars <- vapply(design_variables, \(var){
-    covar <- rlang::eval_tidy(var, data = col_data)
-    if(is.numeric(covar)){
-      TRUE
-    }else{
-      length(unique(covar)) > 1
-    }
-  }, FUN.VALUE = logical(1L))
-  design_variables[valid_vars]
-}
-
-de_limma <- function(values, design, col_data, quo_contrasts){
-  des <- lemur:::handle_design_parameter(design, data = values, col_data = col_data)
-  fit <- lemur:::limma_fit(values, des$design_matrix, col_data)
-  bind_rows(lapply(seq_along(quo_contrasts), \(idx){
-    cntrst <- quo_contrasts[[idx]]
-    res <- lemur:::limma_test_de(fit, !!cntrst, des$design_formula)
-    res$contrast <- names(quo_contrasts)[idx]
-    res
-  }))
-}
-
-de_glmGamPoi <- function(values, design, col_data, quo_contrasts){
-  fit <- glmGamPoi::glm_gp(values, design, col_data = col_data, size_factors = "ratio",
-                           ridge_penalty = 1e-5)
-  bind_rows(lapply(seq_along(quo_contrasts), \(idx){
-    cntrst <- quo_contrasts[[idx]]
-    res <- glmGamPoi::test_de(fit, !!cntrst)
-    res$contrast <- names(quo_contrasts)[idx]
-    res
-  })) |>
-    mutate(t_statistic = sign(lfc) * sqrt(abs(f_statistic)))
-}
-
-make_meta_analysis <- function(full_de_results){
-  if(is.null(full_de_results) || ncol(full_de_results) == 0 || nrow(full_de_results) == 0){
-    NULL
-  }else{
-    full_de_results |> # we summarize over .vals$metaanalysis_over
-      arrange(name, contrast) |>
-      mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, abs(lfc) / abs(t_statistic)))) |>
-      filter(mean(is.finite(lfc_se)) >= 0.5, .by = c(name, contrast)) |>
-      summarize((\(yi, sei){
-        res <- quick_metafor(yi, sei)
-        tibble(lfc = res$b, lfc_se = res$se, pval = pmax(1e-22, res$pval), tau = sqrt(res$tau2))
-      })(lfc ,lfc_se),
-      .by = c(name, contrast)) |>
-      mutate(adj_pval = p.adjust(pval, method = "BH"), .by = contrast) |>
-      transmute(name, pval, adj_pval, t_statistic = lfc/lfc_se, lfc, contrast)
-  }
 }
 
 
