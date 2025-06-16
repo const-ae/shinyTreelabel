@@ -177,9 +177,9 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
 
 
 object_to_string <- function(obj) {
-  rawToChar(serialize(obj, NULL, ascii = TRUE))
+  qs::base91_encode(qs::qserialize(obj), quote_character =  "'")
 }
 
 string_to_object <- function(str) {
-  unserialize(charToRaw(str))
+  qs::qdeserialize(qs::base91_decode(obj))
 }

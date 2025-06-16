@@ -22,8 +22,8 @@ library(tidyverse)
 
 ```{r}
 devtools::load_all(".")
-# seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/main_seurat_data.RDS")
-seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/CD4T_v2_18Feb2025.RDS")
+seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/main_seurat_data.RDS")
+# seu <- readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/CD4T_v2_18Feb2025.RDS")
 meta_data <- readr::read_tsv("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/meta_data.tsv.gz") |>
   left_join(readRDS("~/Documents/Work_Projects/precancer-atlas-code/data/atlas_data/all_treelabels.RDS"), by = "cell_id") |>
   dplyr::select(- starts_with("manual_cell_type"))
@@ -67,7 +67,7 @@ spec <- init_shinyTreelabel(sce,
                                     cond(stage = "Tumor") - cond(stage = "Pre")),
                     de_test = "limma")
 system.time(
-  precalc_res <- precalculate_results2(spec, sce, dbfile = "~/Downloads/result_cache/cd4.duckdb", output = c("da", "de", "de_meta"))
+  precalc_res <- precalculate_results(spec, sce, dbfile = "~/Downloads/result_cache/cd4.duckdb", output = c("da", "de", "de_meta"))
 )
 saveRDS(spec, "~/Downloads/result_cache/cd4-spec.RDS")
 ```
@@ -79,4 +79,13 @@ saveRDS(spec, "~/Downloads/result_cache/cd4-spec.RDS")
 run_shinyTreelabel(spec, precalc_results = "~/Downloads/result_cache/cd4.duckdb")
 # run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/cd4.duckdb")
 ```
+
+
+```{r}
+library(shinyTreelabel)
+spec <- readRDS("~/shinyTreelabel_data/cd4-spec.RDS")
+run_shinyTreelabel(spec, precalc_results = "~/shinyTreelabel_data/cd4.duckdb", 
+                   options = list(port = 4798))
+```
+
 
