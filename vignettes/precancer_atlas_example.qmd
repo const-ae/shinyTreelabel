@@ -67,14 +67,16 @@ spec <- init_shinyTreelabel(sce,
                                     cond(stage = "Tumor") - cond(stage = "Pre")),
                     de_test = "limma")
 system.time(
-  precalc_res <- precalculate_results2(spec, sce, dbfile = "~/Downloads/result_cache/cd4.duckdb", output = c("da"))
+  precalc_res <- precalculate_results2(spec, sce, dbfile = "~/Downloads/result_cache/cd4.duckdb", output = c("da", "de", "de_meta"))
 )
+saveRDS(spec, "~/Downloads/result_cache/cd4-spec.RDS")
 ```
 
 
 
 
 ```{r}
-run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/cd4.duckdb")
+run_shinyTreelabel(spec, precalc_results = "~/Downloads/result_cache/cd4.duckdb")
+# run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/cd4.duckdb")
 ```
 
