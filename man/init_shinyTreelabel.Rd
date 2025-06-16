@@ -5,7 +5,7 @@
 \title{Prepare App}
 \usage{
 init_shinyTreelabel(
-  data,
+  sce,
   treelabels = where(is_treelabel),
   design = ~1,
   pseudobulk_by = NULL,
@@ -13,11 +13,9 @@ init_shinyTreelabel(
   gene_expr_by = NULL,
   contrasts = vars(Intercept = cond()),
   de_test = c("limma", "glmGamPoi"),
-  col_data = NULL,
+  dim_reductions = NULL,
   count_assay = "counts",
-  seurat_assay = "RNA",
-  treelabel_threshold = 0.5,
-  reduced_dims = NULL
+  treelabel_threshold = 0.5
 )
 }
 \description{

@@ -31,7 +31,7 @@ spec <- init_shinyTreelabel(sce, treelabels = all_of("cell_label"),
                           metaanalysis_over = "multiplets",
                           contrasts = vars(cond(stim = "stim") - cond(stim = "ctrl")),
                           gene_expr_by = "stim",
-                          de_test = "glmGamPoi")
+                          de_test = "limma")
 ```
 
 

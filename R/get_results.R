@@ -8,7 +8,6 @@ get_differential_abundance_results <- function(obj, spec, treelabel, top_sel, da
   for(new_name in colnames(aggr_by)){
     col_data[[new_name]] <- aggr_by[[new_name]]
   }
-
   calculate_differential_abundance_results(spec, col_data, treelabel, node = top_sel,
                                        aggregate_by = all_of(colnames(aggr_by)),
                                        targets = vars(!!!rlang::syms(da_targets)))
@@ -16,6 +15,17 @@ get_differential_abundance_results <- function(obj, spec, treelabel, top_sel, da
 
 calculate_differential_abundance_results <- function(spec, col_data, treelabel, node, aggregate_by,
                                                  targets = NULL){
+  # Check if it makes sense to continue
+  celltype_sym <- rlang::sym(node)
+  treelabel_sym <- rlang::sym(treelabel)
+  cell_sel <- col_data |>
+    mutate(..sel = (tl_eval(!! treelabel_sym, !!celltype_sym) == 1) %|% FALSE) |>
+    pull(..sel)
+  if(! any(cell_sel)){
+    return(NULL)
+  }
+
+  # Now do the actual work
   tidyr::expand_grid(..meta = unique(col_data[[spec$metaanalysis_over]]),
                      ..contrast = spec$contrasts) |>
     rowwise() |>
@@ -75,7 +85,9 @@ calculate_differential_expression_results <- function(spec, col_data, counts, tr
   psce <- make_pseudobulk(spec, col_data, counts, treelabel, celltype, aggregate_by)
   # Calculate DE
   res <- make_full_de_results(spec, psce)
-  res$treelabel <- treelabel
+  if(! is.null(res)){
+    res$treelabel <- treelabel
+  }
   res
 }
 

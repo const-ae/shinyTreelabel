@@ -166,18 +166,18 @@ precalculate_results2 <- function(spec, sce, output = c("da", "de", "de_meta"),
   if("da" %in% output){
     for(ts in treelabel_sel){
       i <- 1; total_steps <- length(nodes)
-      n <- spec$root; step <- "init"
+      n <- spec$root;
       if(verbose){
-        cli::cli_progress_step("DA Step {i}/{total_steps} | ETA: {cli::pb_eta}: '{ts}' calculating '{n}' ({step})",
+        cli::cli_progress_step("DA Step {i}/{total_steps} | ETA: {cli::pb_eta}: '{ts}' calculating '{n}'",
                                msg_done = paste0(" Finished '", ts, "' DA analysis"), total = total_steps)
       }
       for(n in nodes){
         full_da <- calculate_differential_abundance_results(spec, col_data_cp,  treelabel = ts, node = n,
                                                         aggregate_by = all_of(colnames(aggr_by)))
-        if(nrow(full_da) > 0){
+        if(! is.null(full_da) && nrow(full_da) > 0){
           full_da$top <- n
+          storage$add_da_rows(full_da)
         }
-        storage$add_da_rows(full_da)
         i <- i+1
         if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 1), error = \(err){})
       }
@@ -193,18 +193,18 @@ precalculate_results2 <- function(spec, sce, output = c("da", "de", "de_meta"),
     counts <- assay(sce, spec$count_assay_name)
     for(ts in treelabel_sel){
       i <- 1; total_steps <- length(nodes)
-      n <- spec$root; step <- "init"
+      n <- spec$root
       if(verbose){
-        cli::cli_progress_step("DE Step {i}/{total_steps} | ETA: {cli::pb_eta}: '{ts}' calculating '{n}' ({step})",
+        cli::cli_progress_step("DE Step {i}/{total_steps} | ETA: {cli::pb_eta}: '{ts}' calculating '{n}'",
                                msg_done = paste0(" Finished '", ts, "' DE analysis"), total = total_steps)
       }
       for(n in nodes){
         full_de <- calculate_differential_expression_results(spec, col_data_cp, counts = counts, treelabel = ts,
                                                celltype = n, aggregate_by = vars(!!! rlang::syms(colnames(aggr_by))))
-        if(nrow(full_de) > 0){
+        if(! is.null(full_de) && nrow(full_de) > 0){
           full_de$celltype <- n
+          storage$add_de_rows(full_de)
         }
-        storage$add_de_rows(full_de)
         i <- i+1
         if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 1), error = \(err){})
       }
