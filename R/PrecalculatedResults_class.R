@@ -181,5 +181,5 @@ object_to_string <- function(obj) {
 }
 
 string_to_object <- function(str) {
-  qs::qdeserialize(qs::base91_decode(obj))
+  qs::qdeserialize(qs::base91_decode(str))
 }
