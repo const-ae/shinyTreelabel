@@ -24,11 +24,16 @@ dummy_precalc_result <- list(
 run_shinyTreelabel <- function(spec, sce = NULL, col_data = NULL, precalc_results = NULL, ...){
   stopifnot(! is.null(sce) || ! is.null(col_data) || ! is.null(precalc_results))
 
+  # Nice styling
+  theme_set(cowplot::theme_cowplot())
+  thematic::thematic_shiny(font = "auto")
+
   if(is.null(precalc_results)){
     precalc_results <- dummy_precalc_result
   }else if(is.character(precalc_results)){
     precalc_results <- PrecalculatedResults$new(dbfile = precalc_results)
   }
+  stopifnot(inherits(precalc_results, "PrecalculatedResults"))
 
   obj <- list(
     col_data = \(){
