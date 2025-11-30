@@ -171,22 +171,29 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
   output$diffAbundancePlotsOverview <- renderPlot({
     req(da_meta_res())
 
+    sel_nodes <- cellTypeSelectorDAView$selected_nodes()
+    color_map <- structure(color_choice_fnc_gen(sel_nodes)(sel_nodes), names = sel_nodes)
+
     da_meta_res() |>
       mutate(conf.lower = LFC - qnorm(0.975) * LFC_se,
              conf.high = LFC + qnorm(0.975) * LFC_se) |>
       mutate(includes_zero = conf.lower < 0 & conf.high > 0) |>
-      mutate(target = factor(target, levels = cellTypeSelectorDAView$selected_nodes())) |>
+      mutate(target = factor(target, levels = sel_nodes)) |>
       ggplot(aes(x = LFC, y = target)) +
         geom_vline(xintercept = 0) +
-        geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = includes_zero)) +
-        scale_color_manual(values = c("FALSE" = "red", "TRUE" = colorspace::lighten("red", 0.7))) +
+        geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = target, alpha = includes_zero), linewidth = 1.5, fatten = 4, show.legend = FALSE) +
+        scale_color_manual(values = color_map, drop = FALSE) +
+        scale_alpha_manual(values = c("FALSE" = 1, "TRUE" = 0.5)) +
         scale_x_continuous(limits = c(-3.2, 3.2), expand = expansion(add = 0), oob = scales::oob_squish) +
-        facet_wrap(vars(..contrast))
+        facet_wrap(vars(contrast))
   })
 
   output$diffAbundancePlotsFull <- renderPlot({
     req(da_results())
     req(da_meta_res())
+
+    sel_nodes <- cellTypeSelectorDAView$selected_nodes()
+    color_map <- structure(color_choice_fnc_gen(sel_nodes)(sel_nodes), names = sel_nodes)
 
     da_results() |>
       bind_rows(da_meta_res() |> mutate(..meta = "Meta")) |>
@@ -195,12 +202,13 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
       mutate(conf.lower = LFC - qnorm(0.975) * LFC_se,
              conf.high = LFC + qnorm(0.975) * LFC_se) |>
       mutate(includes_zero = conf.lower < 0 & conf.high > 0) |>
-      mutate(target = forcats::fct_rev(factor(target, levels = cellTypeSelectorDAView$selected_nodes()))) |>
+      mutate(target = forcats::fct_rev(factor(target, levels = sel_nodes))) |>
       ggplot(aes(x = LFC, y = ..meta)) +
         geom_vline(xintercept = 0) +
-        geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = includes_zero)) +
-        scale_color_manual(values = c("FALSE" = "red", "TRUE" = colorspace::lighten("red", 0.7))) +
-        facet_grid(vars(target), vars(..contrast)) +
+        geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = target, alpha = includes_zero), linewidth = 1.5, fatten = 5, show.legend = FALSE) +
+        scale_color_manual(values = color_map, drop = FALSE) +
+        scale_alpha_manual(values = c("FALSE" = 1, "TRUE" = 0.5)) +
+        facet_grid(vars(target), vars(contrast)) +
         scale_x_continuous(limits = c(-3.2, 3.2), expand = expansion(add = 0), oob = scales::oob_squish)
   })
 
@@ -240,7 +248,7 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
       de_results()
     }else if(input$metaanalysisSelector != "Meta-Analysis"){
       de_results() |>
-        filter(!! rlang::sym(spec$metaanalysis_over) == input$metaanalysisSelector)
+        filter(..meta == input$metaanalysisSelector)
     }else{
       de_meta_results()
     }
@@ -256,6 +264,7 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
   output$deVolcano <- renderPlot({
     req(de_result_display())
     de_result_display() |>
+      mutate(adj_pval = p.adjust(pval, method = "BH")) |>
       ggplot(aes(x = lfc, y = -log10(pval))) +
       geom_point(aes(color = adj_pval < 0.1)) +
       geom_hline(data = \(x) x |> group_by(contrast) |> filter(adj_pval < 0.1) |> slice_max(pval, n = 1, with_ties = FALSE),
@@ -571,6 +580,7 @@ singlecell_treelabel_server <- function(input, output, session){
     top_sel <- cellTypeSelectorDAView$top_selection()
     da_targets <- setdiff(cellTypeSelectorDAView$selected_nodes(), top_sel)
     key <- paste0(sel_treelabel, "-", top_sel)
+  browser()
     res <- if(key %in% names(.vals$precalc_res$full_da)){
       print(paste0("Looking up ", key, " in .vals$precalc_res$full_da"))
       .vals$precalc_res$full_da[[key]] |>
@@ -584,14 +594,15 @@ singlecell_treelabel_server <- function(input, output, session){
   })
 
   da_meta_res <- reactive({
+    browser()
     req(da_results())
     da_results() |>
-      filter(mean(is.finite(LFC_se)) >= 0.5, .by = c(target, ..contrast)) |>
+      filter(mean(is.finite(LFC_se)) >= 0.5, .by = c(target, contrast)) |>
       summarize((\(yi, sei){
         res <- quick_metafor(yi, sei)
         tibble(LFC = res$b, LFC_se = res$se, pval = pmax(1e-22, res$pval), tau = sqrt(res$tau2))
       })(LFC, LFC_se),
-      .by = c(target, ..contrast))
+      .by = c(target, contrast))
   })
 
   output$diffAbundancePlotsOverview <- renderPlot({
@@ -605,7 +616,7 @@ singlecell_treelabel_server <- function(input, output, session){
         geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = includes_zero)) +
         scale_color_manual(values = c("FALSE" = "red", "TRUE" = colorspace::lighten("red", 0.7))) +
         scale_x_continuous(limits = c(-3.2, 3.2), expand = expansion(add = 0), oob = scales::oob_squish) +
-        facet_wrap(vars(..contrast))
+        facet_wrap(vars(contrast))
   })
 
   output$diffAbundancePlotsFull <- renderPlot({
@@ -624,7 +635,7 @@ singlecell_treelabel_server <- function(input, output, session){
         geom_vline(xintercept = 0) +
         geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = includes_zero)) +
         scale_color_manual(values = c("FALSE" = "red", "TRUE" = colorspace::lighten("red", 0.7))) +
-        facet_grid(vars(target), vars(..contrast)) +
+        facet_grid(vars(target), vars(contrast)) +
         scale_x_continuous(limits = c(-3.2, 3.2), expand = expansion(add = 0), oob = scales::oob_squish)
   })
 

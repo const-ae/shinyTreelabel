@@ -40,19 +40,14 @@ SummarizedExperiment::colData(sce) <- SummarizedExperiment::colData(sce) |>
   left_join(meta_data, by = "cell_id") |>
   S4Vectors::DataFrame()
 `%not_in%` <- Negate(`%in%`)
-data_filter <- rlang::quo(disease_state %not_in% c("pre_non_malignant", "pre_virus") & cancer != "LIHC" & disease_state_details != "Tumor_metastasis")
+data_filter <- rlang::quo(disease_state %not_in% c("pre_non_malignant", "pre_virus") &
+                            cancer != "LIHC" &
+                            disease_state_details != "Tumor_metastasis" &
+                            additional_information != "Non-atrophic gastritis" & donor != "P154")
+
 sel_cells <- sce$cell_id[rlang::eval_tidy(data_filter,  as_tibble(SummarizedExperiment::colData(sce)))]
 sce <- sce[,which(sce$cell_id %in% sel_cells)]
 rm(seu)
-```
-
-```{r}
-# dat <- as_tibble(colData(sce))
-# tmp <- serialize(dat, NULL, ascii = TRUE)
-tmp2 <- qs::qserialize(dat)
-str2 <- qs::base91_encode(tmp2, "'")
-tmp3 <- qs::base91_decode(str2)
-dat2 <- qs::qdeserialize(tmp3)
 ```
 
 
@@ -66,18 +61,17 @@ sce$stage <- as.factor(sce$stage)
 spec <- init_shinyTreelabel(sce, 
                     treelabels = c("label_manual"),
                     design = \(dat){
-                      if(length(unique(dat$cohort)) > 1) ~ stage + cohort
-                      else ~ stage
+                      ~ stage
                     }, 
                     pseudobulk_by = vars(donor), 
-                    metaanalysis_over = "cancer",
+                    metaanalysis_over = c("cohort", "cancer"),
                     gene_expr_by = "stage",
                     contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
                                     cond(stage = "Tumor") - cond(stage = "Normal"),
                                     cond(stage = "Tumor") - cond(stage = "Pre")),
                     de_test = "limma")
 system.time(
-  precalc_res <- precalculate_results(spec, sce, dbfile = "~/Downloads/result_cache/atlas.duckdb", output = c("da", "de", "de_meta"))
+  precalc_res <- precalculate_results(spec, sce, dbfile = "~/Downloads/result_cache/test.duckdb", output = c("da"))
 )
 saveRDS(spec, "~/Downloads/result_cache/atlas-spec.RDS")
 ```
@@ -86,6 +80,7 @@ saveRDS(spec, "~/Downloads/result_cache/atlas-spec.RDS")
 
 
 ```{r}
+spec <- readRDS("~/Downloads/result_cache/atlas-spec.RDS")
 run_shinyTreelabel(spec, precalc_results = "~/Downloads/result_cache/atlas.duckdb")
 # run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/cd4.duckdb")
 ```

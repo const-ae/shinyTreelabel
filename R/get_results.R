@@ -25,27 +25,51 @@ calculate_differential_abundance_results <- function(spec, col_data, treelabel, 
     return(NULL)
   }
 
-  # Now do the actual work
-  tidyr::expand_grid(..meta = unique(col_data[[spec$metaanalysis_over]]),
-                     ..contrast = spec$contrasts) |>
-    rowwise() |>
-    group_map(\(dat, .){
-      sel_dat <- filter(col_data, !!rlang::sym(spec$metaanalysis_over) == dat$..meta)
-      design_act <- if(rlang::is_function(spec$design)){
-        spec$design(sel_dat)
-      }else{
-        spec$design
-      }
-      res <- treelabel::test_abundance_changes(sel_dat, design = design_act,
-                                               aggregate_by = {{aggregate_by}},
-                                               contrast = !!dat$..contrast[[1]],
-                                               treelabels = all_of(treelabel),
-                                               targets = {{targets}},
-                                               reference = !! rlang::sym(node))
-      res |>
-        mutate(..meta = dat$..meta, ..contrast = rlang::as_label(dat$..contrast[[1]]))
+  # Now do the actual work.
+  meta_sym <- rlang::syms(spec$metaanalysis_over)
+
+  col_data |>
+    group_by(!!! meta_sym) |>
+    group_modify(.keep = TRUE, \(sel_dat, key){
+      design_act <- if(rlang::is_function(spec$design)) spec$design(sel_dat) else spec$design
+      bind_rows(lapply(spec$contrasts, \(cntrst){
+        treelabel::test_abundance_changes(sel_dat, design = design_act,
+                                                 aggregate_by = {{aggregate_by}},
+                                                 contrast = !!cntrst,
+                                                 treelabels = all_of(treelabel),
+                                                 targets = {{targets}},
+                                                 reference = !! rlang::sym(node)) |>
+          mutate(contrast = rlang::as_label(cntrst))
+      }))
     }) |>
-    dplyr::bind_rows()
+    group_by(contrast, target, treelabel, .add = TRUE) |>
+    (\(dat){grouped_df(dat, vars = rev(group_vars(dat)))})() |>
+    transmute(obj = tibble(LFC, LFC_se, conf_low = LFC - qnorm(0.975) * LFC_se,
+                           conf_high = LFC + qnorm(0.975) * LFC_se, tau = 0)) |>
+    recursive_summarize(obj = calc_meta_analysis(obj), .early_stop = 3) |> #  Reduce away all but the last metaanalysis step
+    ungroup() |>
+    unnest(obj) |>
+    dplyr::rename(..meta = dplyr::last(spec$metaanalysis_over))
+}
+
+calc_meta_analysis <- function(obj, mean = "LFC", se = "LFC_se"){
+  x <- obj[[mean]]
+  y <- obj[[se]]
+  x <- x[is.finite(y)]
+  y <- y[is.finite(y)]
+  if(length(x) == 0){
+    tibble({{mean}} := NA, {{se}} := NA, conf_low = NA, conf_high = NA, tau = NA)
+  }else if(length(x) == 1){
+    tibble({{mean}} := x, {{se}} := y, conf_low = x - qnorm(0.975) * y, conf_high = x + qnorm(0.975) * y, tau = 0)
+  }else{
+    tryCatch({
+      met <- metafor::rma(x, sei = y)
+      conf <- confint(met)
+      tibble({{mean}} := drop(met$b), {{se}} := met$se, conf_low = met$ci.lb, conf_high = met$ci.ub, tau = sqrt(met$tau2))
+    }, error = function(err){
+      tibble({{mean}} := NA, {{se}} := NA, conf_low = NA, conf_high = NA, tau = NA)
+    })
+  }
 }
 
 
@@ -60,7 +84,7 @@ calculate_meta_differential_abundance_results <- function(da_results){
         tibble(LFC = 0, LFC_se = Inf, pval = 1, tau = 0)
       }
     })(LFC, LFC_se),
-    .by = c(treelabel, top, target, ..contrast))
+    .by = c(treelabel, top, target, contrast))
 }
 
 
@@ -92,7 +116,6 @@ calculate_differential_expression_results <- function(spec, col_data, counts, tr
 }
 
 
-
 make_pseudobulk <- function(spec, col_data, counts, treelabel, celltype, aggregate_by, return_selector=FALSE){
   celltype_sym <- rlang::sym(celltype)
   treelabel_sym <- rlang::sym(treelabel)
@@ -107,7 +130,7 @@ make_pseudobulk <- function(spec, col_data, counts, treelabel, celltype, aggrega
     }
   }else{
     extra_pseudobulk_vars <- if(! is.null(spec$metaanalysis_over)){
-      vars(!! rlang::sym(spec$metaanalysis_over))
+      vars(!!! rlang::syms(spec$metaanalysis_over))
     }else{
       vars()
     }
@@ -132,42 +155,78 @@ make_full_de_results <- function(spec, psce){
   if(is.null(psce)){
     NULL
   }else if(! is.null(spec$metaanalysis_over)){
-    meta_vals <- SummarizedExperiment::colData(psce)[[spec$metaanalysis_over]]
-    levels <- unique(as.character(meta_vals))
-    res <- lapply(levels, \(level){
-      psce_subset <- psce[,meta_vals == level]
-      if(ncol(psce_subset) > 0){
-        design_act <- if(rlang::is_function(spec$design)){
-          spec$design(SummarizedExperiment::colData(psce_subset))
-        }else{
-          spec$design
+    meta_sym <- rlang::syms(spec$metaanalysis_over)
+    res <- as_tibble(SummarizedExperiment::colData(psce)) |>
+      rowid_to_column(var = "..row_id") |>
+      group_by(!!! meta_sym) |>
+      group_modify(.keep = TRUE, \(sel_dat, key){
+        psce_subset <- psce[,sel_dat$..row_id]
+        internal_res <- if(ncol(psce_subset) > 0){
+          design_act <- if(rlang::is_function(spec$design)){
+            spec$design(sel_dat)
+          }else{
+            spec$design
+          }
+          if(spec$de_test == "limma"){
+            tryCatch({
+              de_limma(SingleCellExperiment::logcounts(psce_subset), design_act, sel_dat, spec$contrasts)
+            }, error = function(err){
+              NULL
+            })
+          }else if(spec$de_test == "glmGamPoi"){
+            tryCatch({
+              de_glmGamPoi(SingleCellExperiment::counts(psce_subset), design_act, sel_dat, spec$contrasts)
+            }, error = function(err){
+              NULL
+            })
+          }else{
+            stop("Invalid de_test argument: '", de_test, "'")
+          }
         }
-        if(spec$de_test == "limma"){
-          tryCatch({
-            de_limma(SingleCellExperiment::logcounts(psce_subset), design_act, SummarizedExperiment::colData(psce_subset), spec$contrasts)
-          }, error = function(err){
-            NULL
-          })
-        }else if(spec$de_test == "glmGamPoi"){
-          tryCatch({
-            de_glmGamPoi(SingleCellExperiment::counts(psce_subset), design_act, SummarizedExperiment::colData(psce_subset), spec$contrasts)
-          }, error = function(err){
-            NULL
-          })
-        }else{
-          stop("Invalid de_test argument: '", de_test, "'")
-        }
-      }
-    })
-    names(res) <- levels
-    bind_rows(res, .id = spec$metaanalysis_over)
+        internal_res
+      }) |>
+      mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, abs(lfc) / abs(t_statistic)))) |>
+      transmute(contrast, name, obj = tibble(lfc, lfc_se, conf_low = lfc - qnorm(0.975) * lfc_se,
+                             conf_high = lfc + qnorm(0.975) * lfc_se, tau = 0)) |>
+      group_by(contrast, name, .add = TRUE) |>
+      (\(dat){grouped_df(dat, vars = rev(group_vars(dat)))})()
+
+    # The res_b is very expensive to calculate if there are many rows
+    res_a <- res |> filter(n() == 1) |> ungroup(!!! head(meta_sym, n = length(meta_sym) - 1))
+    res_b <- res |> filter(n() > 1)  |> recursive_summarize(obj = calc_meta_analysis(obj, mean = "lfc", se = "lfc_se"), .early_stop = 2)
+
+    bind_rows(res_a, res_b) |>
+      ungroup() |>
+      unnest(obj) |>
+      mutate(pval = pnorm(abs(lfc) / lfc_se, lower.tail = FALSE) * 2) |>
+      dplyr::rename(..meta = dplyr::last(spec$metaanalysis_over))
   }else{
     design_act <- if(rlang::is_function(spec$design)){
       spec$design(SummarizedExperiment::colData(psce))
     }else{
       spec$design
     }
-    de_limma(SingleCellExperiment::logcounts(psce), design_act, SummarizedExperiment::colData(psce), spec$contrasts)
+    res <- if(spec$de_test == "limma"){
+      tryCatch({
+        de_limma(SingleCellExperiment::logcounts(psce), design_act, SummarizedExperiment::colData(psce), spec$contrasts)
+      }, error = function(err){
+        tibble()
+      })
+    }else if(spec$de_test == "glmGamPoi"){
+      tryCatch({
+        de_glmGamPoi(SingleCellExperiment::counts(psce), design_act, SummarizedExperiment::colData(psce), spec$contrasts)
+      }, error = function(err){
+        tibble()
+      })
+    }else{
+      stop("Invalid de_test argument: '", de_test, "'")
+    }
+    res |>
+      mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, abs(lfc) / abs(t_statistic)))) |>
+      transmute(contrast, name, lfc, lfc_se) |>
+      mutate(conf_low = lfc - qnorm(0.975) * lfc_se, conf_high = lfc + qnorm(0.975) * lfc_se, tau = 0,
+             pval = pnorm(abs(lfc) / lfc_se, lower.tail = FALSE) * 2) |>
+      dplyr::rename(..meta = dplyr::last(spec$metaanalysis_over))
   }
 }
 
@@ -176,7 +235,7 @@ de_limma <- function(values, design, col_data, quo_contrasts){
   sel <- rowSums(values) > 0
   values_subset <- values[sel,,drop=FALSE]
   extra_res_rows <- data.frame(name = rownames(values)[!sel],
-                               pval = 1, adj_pval = 1)
+                               pval = rep(1, sum(!sel)), adj_pval = rep(1, sum(!sel)))
 
   des <- lemur:::handle_design_parameter(design, data = values_subset, col_data = col_data)
   fit <- lemur:::limma_fit(values_subset, des$design_matrix, col_data)
@@ -186,7 +245,8 @@ de_limma <- function(values, design, col_data, quo_contrasts){
                      extra_res_rows)
     res$contrast <- names(quo_contrasts)[idx]
     res
-  }))
+  })) |>
+    mutate(t_statistic = sign(lfc) * qnorm(pval / 2))
 }
 
 de_glmGamPoi <- function(values, design, col_data, quo_contrasts){
@@ -198,14 +258,13 @@ de_glmGamPoi <- function(values, design, col_data, quo_contrasts){
     res$contrast <- names(quo_contrasts)[idx]
     res
   })) |>
-    mutate(t_statistic = sign(lfc) * sqrt(abs(f_statistic)))
+    mutate(t_statistic = sign(lfc) * qnorm(pval / 2, lower.tail = FALSE))
 }
 
 
 calculate_meta_differential_expression_results <- function(de_results){
   de_results |> # we summarize over .vals$metaanalysis_over
     arrange(name, contrast) |>
-    mutate(lfc_se = pmax(0.1, ifelse(lfc == 0 & t_statistic == 0, Inf, abs(lfc) / abs(t_statistic)))) |>
     summarize((\(y, se){
       if(sum(is.finite(se) & se <= 10) >= 3){
         y <- y[is.finite(se)]
@@ -217,8 +276,9 @@ calculate_meta_differential_expression_results <- function(de_results){
       }
     })(lfc ,lfc_se),
     .by = c(name, contrast, treelabel, celltype)) |>
+    mutate(conf_low = lfc - qnorm(0.975) * lfc_se, conf_high = lfc + qnorm(0.975) * lfc_se) |>
     mutate(adj_pval = p.adjust(pval, method = "BH"), .by = contrast) |>
-    transmute(treelabel, celltype, name, pval, adj_pval, t_statistic = lfc/lfc_se, lfc, contrast)
+    transmute(treelabel, celltype, name, pval, adj_pval, lfc, contrast)
 }
 
 

@@ -113,10 +113,16 @@ init_shinyTreelabel <- function(sce, treelabels = where(is_treelabel),
   treelabel_names <- names(tidyselect::eval_select({{treelabels}}, data = col_data))
   metaanalysis_levels <- if(is.null(metaanalysis_over)){
     NULL
-  }else if(is.factor(col_data[[metaanalysis_over]])){
-    levels(col_data[[metaanalysis_over]])
   }else{
-    unique(as.character(col_data[[metaanalysis_over]]))
+    tmp <- lapply(metaanalysis_over, \(mo){
+      if(is.factor(col_data[[mo]])){
+        levels(col_data[[mo]])
+      }else{
+        unique(as.character(col_data[[mo]]))
+      }
+    })
+    names(tmp) <- metaanalysis_over
+    tmp
   }
 
   list(

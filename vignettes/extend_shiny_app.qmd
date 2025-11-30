@@ -1,0 +1,76 @@
+---
+title: "Simple Example"
+vignette: >
+  %\VignetteIndexEntry{precancer_atlas_example}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: '#>'
+---
+
+```{r}
+#| label: setup
+options(paged.print=FALSE)
+```
+
+```{r}
+library(tidyverse)
+devtools::load_all(".")
+```
+
+
+```{r}
+sce <- muscData::Kang18_8vs8()
+logcounts(sce) <- transformGamPoi::shifted_log_transform(sce)
+hvg <- order(-rowVars(logcounts(sce)))
+sce <- sce[hvg[1:500],]
+
+tree_def <- igraph::graph_from_literal(
+  root - Lymphoid : Myeloid,
+  Lymphoid - `B cells` : `T cells` : `NK cells`,
+  `T cells` - `CD4 T cells` : `CD8 T cells`,
+  Myeloid - `Monocytes`: `Dendritic cells` : `Megakaryocytes`,
+  Monocytes -  `CD14+ Monocytes` : `FCGR3A+ Monocytes`
+)
+
+sce$cell_label <- treelabel::treelabel(sce$cell, tree = tree_def)
+sce$dataset <- ifelse(sce$multiplets == "singlet", sample(letters[1:3], size = ncol(sce), replace = TRUE), "X")
+colData(sce)
+```
+
+
+```{r}
+spec <- init_shinyTreelabel(sce, treelabels = all_of("cell_label"),
+                          design = ~ stim,
+                          pseudobulk_by = vars(ind),
+                          metaanalysis_over = c("dataset", "multiplets"),
+                          contrasts = vars(cond(stim = "stim") - cond(stim = "ctrl"),
+                                           cond(stim = "stim") - cond(stim = "ctrl") * 2),
+                          gene_expr_by = "stim",
+                          de_test = "limma")
+```
+
+
+```{r}
+col_data <- as_tibble(colData(sce))
+aggr_by <- dplyr::transmute(col_data, !!! spec$pseudobulk_by)
+psce <- make_pseudobulk(spec, col_data, counts(sce), "cell_label", "B cells", aggregate_by = vars(!!! rlang::syms(colnames(aggr_by))))
+```
+
+
+```{r, paged.print=FALSE}
+precalc_res <- precalculate_results(spec, sce, dbfile = "~/Downloads/result_cache/test.duckdb", output = c("da"), clear_file = FALSE)
+precalc_res$de_results()
+precalc_res$de_meta_results()
+precalc_res$da_meta_results()
+precalc_res$da_results()
+```
+
+```{r}
+run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/test.duckdb")
+```
+
+
+
