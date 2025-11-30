@@ -21,7 +21,7 @@ dummy_precalc_result <- list(
 #' @returns Does not return anything, but blocks the thread and serves HTTP responses.
 #'
 #' @export
-run_shinyTreelabel <- function(spec, sce = NULL, col_data = NULL, precalc_results = NULL, ...){
+make_treelabel_app <- function(spec, sce = NULL, col_data = NULL, precalc_results = NULL, ...){
   stopifnot(! is.null(sce) || ! is.null(col_data) || ! is.null(precalc_results))
 
   # Nice styling
