@@ -2,10 +2,10 @@ import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
 export class D3TreeSelector {
   // Declare the chart dimensions and margins.
-  constructor(id, width = 1000, marginTop = 20, marginRight = 20, marginBottom = 30, marginLeft = 40,
-              dx = 20){
+  constructor(id, target_width = 1000, marginTop = 20, marginRight = 20, marginBottom = 30, marginLeft = 40,
+              dx = 20, min_dy = 200, max_dy = 400){
     this.id = id
-    this.width = width;
+    this.width = target_width;
     this.marginTop = marginTop;
     this.marginRight = marginRight;
     this.marginBottom = marginBottom;
@@ -26,16 +26,24 @@ export class D3TreeSelector {
       // Rows are separated by dx pixels, columns by dy pixels. These names can be counter-intuitive
       // (dx is a height, and dy a width). This because the tree must be viewed with the root at the
       // “bottom”, in the data domain. The width of a column is based on the tree’s height.
-      const dy = (width - marginRight - marginLeft) / (1 + this.root.height);
+      var dy = (this.width - marginRight - marginLeft) / (1 + this.root.height);
+      if(dy < min_dy){
+        dy = min_dy;
+        this.width = dy * (1 + this.root.height) + marginRight + marginLeft;
+      }else if(dy > max_dy){
+        dy = max_dy;
+        this.width = dy * (1 + this.root.height) + marginRight + marginLeft;
+      }
+
 
       // Define the tree layout and the shape for links.
       this.tree = d3.tree().nodeSize([dx, dy]);
 
       // Create the SVG container, a layer for the links and a layer for the nodes.
       this.svg = d3.create("svg")
-          .attr("width", width)
+          .attr("width", this.width)
           .attr("height", dx)
-          .attr("viewBox", [-marginLeft, -marginTop, width, dx])
+          .attr("viewBox", [-marginLeft, -marginTop, this.width, dx])
           .attr("style", "height: auto; font-size: 16px; font-family: var(--bs-body-font-family, sans-serif); user-select: none;");
 
       this.gLink = this.svg.append("g")
@@ -60,7 +68,9 @@ export class D3TreeSelector {
 
       // Append the SVG element.
       console.log("Appending svg element to: " + this.id + "-d3tree_holder");
-      document.getElementById(this.id + "-d3tree_holder").append(this.svg.node());
+      let container_div = document.getElementById(this.id + "-d3tree_holder");
+      container_div.style.maxWidth = (this.width + marginRight + marginLeft) + "px";
+      container_div.append(this.svg.node());
     });
 
 
