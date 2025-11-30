@@ -52,7 +52,13 @@ rm(seu)
 
 
 ```{r}
-# sce <- sce[,sce$cancer_type %in% c("LUAD", "BRCA", "LUSC", "PDAC")]
+hvg <- order(-MatrixGenerics::rowVars(logcounts(sce)))
+sce <- sce[hvg[1:500], ]
+```
+
+
+```{r}
+sce <- sce[,sce$cancer %in% c("LUAD", "BRCA", "LUSC", "PDAC")]
 # sce <- sce[,sample.int(ncol(sce), size = 5000)]
 ```
 
@@ -70,19 +76,29 @@ spec <- init_shinyTreelabel(sce,
                                     cond(stage = "Tumor") - cond(stage = "Normal"),
                                     cond(stage = "Tumor") - cond(stage = "Pre")),
                     de_test = "limma")
+saveRDS(spec, "~/Downloads/result_cache/atlas_small-spec.RDS")
+```
+
+
+```{r}
 system.time(
-  precalc_res <- precalculate_results(spec, sce, dbfile = "~/Downloads/result_cache/test.duckdb", output = c("da"))
+  precalc_res <- precalculate_results(spec, sce, dbfile = "~/Downloads/result_cache/atlas_small.duckdb", output = c(""))
 )
-saveRDS(spec, "~/Downloads/result_cache/atlas-spec.RDS")
+
 ```
 
 
 
 
 ```{r}
-spec <- readRDS("~/Downloads/result_cache/atlas-spec.RDS")
-run_shinyTreelabel(spec, precalc_results = "~/Downloads/result_cache/atlas.duckdb")
+spec <- readRDS("~/Downloads/result_cache/atlas_small-spec.RDS")
+run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/atlas_small.duckdb")
 # run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/cd4.duckdb")
+```
+
+
+```{r}
+sce$label_manual
 ```
 
 

@@ -53,11 +53,11 @@ make_treelabel_app <- function(spec, sce = NULL, col_data = NULL, precalc_result
     },
     da_results = \(treelabel, top_selection, targets){
       precalc_results$da_results(treelabel, top_selection, targets) %||%
-        calculate_differential_abundance_results(obj, spec, treelabel, top_selection, targets)
+        get_differential_abundance_results(obj, spec, treelabel, top_selection, targets)
     },
     da_meta_results = \(treelabel, top_selection, targets){
       precalc_results$da_meta_results(treelabel, top_selection, targets) %||%
-        calculate_meta_differential_abundance_results(obj$da_results(treelabel, top_sel, da_targets))
+        calculate_meta_differential_abundance_results(obj$da_results(treelabel, top_selection, targets))
     },
     de_results = \(treelabel, celltype, gene){
       precalc_results$de_results(treelabel, celltype, gene) %||%
@@ -66,8 +66,7 @@ make_treelabel_app <- function(spec, sce = NULL, col_data = NULL, precalc_result
     de_meta_results = \(treelabel, celltype, gene){
       precalc_results$de_meta_results(treelabel, celltype, gene) %||%
         calculate_meta_differential_expression_results(
-          precalc_results$de_results(treelabel, celltype, gene) %||%
-            get_differential_expression_results(obj, spec, treelabel, celltype, gene)
+          obj$de_results(treelabel, celltype, gene)
         )
     }
   )
@@ -220,10 +219,7 @@ precalculate_results <- function(spec, sce, output = c("da", "de", "de_meta"),
       for(n in nodes){
         full_da <- calculate_differential_abundance_results(spec, col_data_cp,  treelabel = ts, node = n,
                                                         aggregate_by = all_of(colnames(aggr_by)))
-        if(! is.null(full_da) && nrow(full_da) > 0){
-          full_da$top <- n
-          storage$add_da_rows(full_da)
-        }
+        storage$add_da_rows(full_da)
         i <- i+1
         if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 1), error = \(err){})
       }
@@ -248,10 +244,7 @@ precalculate_results <- function(spec, sce, output = c("da", "de", "de_meta"),
       for(n in nodes){
         full_de <- calculate_differential_expression_results(spec, col_data_cp, counts = counts, treelabel = ts,
                                                celltype = n, aggregate_by = vars(!!! rlang::syms(colnames(aggr_by))))
-        if(! is.null(full_de) && nrow(full_de) > 0){
-          full_de$celltype <- n
-          storage$add_de_rows(full_de)
-        }
+        storage$add_de_rows(full_de)
         i <- i+1
         if(verbose) tryCatch(cli::cli_progress_update(force = TRUE, inc = 1), error = \(err){})
       }
@@ -263,8 +256,7 @@ precalculate_results <- function(spec, sce, output = c("da", "de", "de_meta"),
     full_data <- tbl(storage$con, "de") |>
       dplyr::collect()
     if(! is.null(full_data) && nrow(full_data) > 0){
-      meta <- full_data |>
-        calculate_meta_differential_expression_results()
+      meta <- calculate_meta_differential_expression_results(full_data)
       storage$add_de_meta_rows(meta)
     }
     if(verbose) tryCatch(cli::cli_status_clear(result = "done", msg_done = paste0(" Finished '", ts, "' DE meta analysis")))

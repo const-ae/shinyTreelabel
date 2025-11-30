@@ -10,6 +10,7 @@ precalculate_results(
   output = c("da", "de", "de_meta"),
   treelabel_sel = NULL,
   dbfile = ":memory:",
+  clear_file = TRUE,
   verbose = TRUE
 )
 }

@@ -49,7 +49,8 @@ calculate_differential_abundance_results <- function(spec, col_data, treelabel, 
     recursive_summarize(obj = calc_meta_analysis(obj), .early_stop = 3) |> #  Reduce away all but the last metaanalysis step
     ungroup() |>
     unnest(obj) |>
-    dplyr::rename(..meta = dplyr::last(spec$metaanalysis_over))
+    dplyr::rename(..meta = dplyr::last(spec$metaanalysis_over)) |>
+    mutate(top = node)
 }
 
 calc_meta_analysis <- function(obj, mean = "LFC", se = "LFC_se"){
@@ -101,6 +102,7 @@ get_differential_expression_results <- function(obj, spec, treelabel, celltype, 
 
   calculate_differential_expression_results(spec, col_data, obj$counts(), treelabel, celltype,
                                        aggregate_by = vars(!!! rlang::syms(colnames(aggr_by))))
+
 }
 
 
@@ -111,6 +113,7 @@ calculate_differential_expression_results <- function(spec, col_data, counts, tr
   res <- make_full_de_results(spec, psce)
   if(! is.null(res)){
     res$treelabel <- treelabel
+    res$celltype <- celltype
   }
   res
 }
@@ -171,13 +174,13 @@ make_full_de_results <- function(spec, psce){
             tryCatch({
               de_limma(SingleCellExperiment::logcounts(psce_subset), design_act, sel_dat, spec$contrasts)
             }, error = function(err){
-              NULL
+              tibble()
             })
           }else if(spec$de_test == "glmGamPoi"){
             tryCatch({
               de_glmGamPoi(SingleCellExperiment::counts(psce_subset), design_act, sel_dat, spec$contrasts)
             }, error = function(err){
-              NULL
+              tibble()
             })
           }else{
             stop("Invalid de_test argument: '", de_test, "'")
