@@ -45,7 +45,9 @@ singlecell_treelabel_ui <- function(spec){
                       div(
                         style = "max-width: 1400px; margin: auto;",
                         shinycssloaders::withSpinner(plotOutput(outputId = "deVolcano")),
-                        shinycssloaders::withSpinner(DT::DTOutput(outputId = "deTable"))
+                        div(style = "width=100%; overflow-x: auto;",
+                          shinycssloaders::withSpinner(DT::DTOutput(outputId = "deTable"))
+                        )
                       )
              ),
              tabPanel("Differential Abundance",

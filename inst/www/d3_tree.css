@@ -1,6 +1,6 @@
 .d3-tree-container {
   width: 100%;
-  max-width: 1000px;   /* prevent oversizing */
+  max-width: 1050px;   /* prevent oversizing */
   min-width: 280px;     /* keeps mobile usable */
   margin: 0 auto;      /* center the tree */
   overflow-x: auto;      /* fallback: horizontal scroll if needed */

@@ -2,8 +2,8 @@ import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
 export class D3TreeSelector {
   // Declare the chart dimensions and margins.
-  constructor(id, width = 1400, marginTop = 20, marginRight = 20, marginBottom = 30, marginLeft = 40,
-              dx = 15){
+  constructor(id, width = 1000, marginTop = 20, marginRight = 20, marginBottom = 30, marginLeft = 40,
+              dx = 20){
     this.id = id
     this.width = width;
     this.marginTop = marginTop;
@@ -36,7 +36,7 @@ export class D3TreeSelector {
           .attr("width", width)
           .attr("height", dx)
           .attr("viewBox", [-marginLeft, -marginTop, width, dx])
-          .attr("style", "max-width: 100%; height: auto; font: 12px sans-serif; user-select: none;");
+          .attr("style", "height: auto; font-size: 16px; font-family: var(--bs-body-font-family, sans-serif); user-select: none;");
 
       this.gLink = this.svg.append("g")
           .attr("fill", "none")
