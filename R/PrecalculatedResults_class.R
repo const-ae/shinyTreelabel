@@ -34,8 +34,23 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
       DBI::dbWriteTable(self$con, "de_meta", da_results, append = TRUE)
     },
     add_col_data = function(col_data){
-      DBI::dbWriteTable(self$con, "col_data", data.frame(x = object_to_string(col_data)),
-                        overwrite = TRUE)
+      treelabel_columns <- colnames(dplyr::select(col_data, where(is_treelabel)))
+      expanded_col_data <- col_data |>
+        mutate(across(all_of(treelabel_columns), \(x) x |> tl_score_matrix() |> as_tibble())) |>
+        unpack(treelabel_columns, names_sep = "_--_")
+      treelabel_df <- tibble(name = treelabel_columns) |>
+        mutate(treeroot = map_chr(name, \(n) tl_tree_root(col_data[[n]])))
+      igraph_df <- tibble(name = treelabel_columns) |>
+        mutate(edges = map(name, \(n){
+          mat <- igraph::as_edgelist(tl_tree(col_data[[n]]))
+          colnames(mat) <- c("left", "right")
+          as_tibble(mat)
+        })) |>
+        unnest(edges, names_sep = "_")
+
+      DBI::dbWriteTable(self$con, "col_data_expanded", expanded_col_data)
+      DBI::dbWriteTable(self$con, "tree_defs", igraph_df)
+      DBI::dbWriteTable(self$con, "treelabel_defs", treelabel_df)
       private$col_data_cache <- NULL
     },
     clear_reducedDimensions = function(){
@@ -54,7 +69,9 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
       DBI::dbRemoveTable(self$con, "de_meta", fail_if_missing = FALSE)
     },
     clear_col_data = function(){
-      DBI::dbRemoveTable(self$con, "col_data", fail_if_missing = FALSE)
+      DBI::dbRemoveTable(self$con, "col_data_expanded", fail_if_missing = FALSE)
+      DBI::dbRemoveTable(self$con, "treelabel_defs", fail_if_missing = FALSE)
+      DBI::dbRemoveTable(self$con, "tree_defs", fail_if_missing = FALSE)
       private$col_data_cache <- NULL
     },
 
@@ -63,14 +80,22 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
     col_data = \(){
       if(! is.null(private$col_data_cache)){
         private$col_data_cache
-      }else if("col_data" %in% DBI::dbListTables(self$con)){
-        cd <- tbl(self$con, "col_data") |>
-          dplyr::collect(n = 1)
-        cd <- string_to_object(cd$x)
+      }else if(all(c("col_data_expanded", "tree_defs", "treelabel_defs") %in% DBI::dbListTables(self$con))){
+        treelabel_root <- dplyr::tbl(self$con, "treelabel_defs") |> dplyr::collect() |> deframe()
+        igraph_df <- dplyr::tbl(self$con, "tree_defs") |> dplyr::collect()
+        expanded_col_data <- dplyr::tbl(self$con, "col_data_expanded") |> dplyr::collect()
+        trees <- igraph_df |>
+          summarize(tree = list(igraph::graph_from_edgelist(cbind(edges_left, edges_right))), .by = name) |>
+          tibble::deframe()
+        for(n in names(treelabel_root)){
+          sel_col <- paste0(n, "_--_")
+          scores <- as.matrix(dplyr::select(expanded_col_data, starts_with(sel_col)))
+          colnames(scores) <- stringr::str_remove(colnames(scores), sel_col)
+          col_data[[n]] <- treelabel::treelabel(scores, tree = trees[[n]], tree_root = treelabel_root[n], propagate_up = "none")
+        }
+        cd <- col_data |> dplyr::select(- contains("_--_"))
         private$col_data_cache <- cd
         cd
-      }else{
-        NULL
       }
     },
     dim_reductions = \(name) {
