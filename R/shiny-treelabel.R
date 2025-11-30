@@ -128,9 +128,16 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
 
     sel_nodes <- as.character(cellTypeSelectorUMAPView$selected_nodes())
     color_map <- structure(color_choice_fnc_gen(sel_nodes)(sel_nodes), names = sel_nodes)
-    obj$col_data() |>
-      mutate(reddim = reduced_dim()) |>
-      mutate(coloring = tl_name(tl_tree_filter(!! rlang::sym(spec$treelabel_names[1]), \(x) setdiff(sel_nodes, spec$root)))) |>
+
+    umap_col_data <- obj$col_data() |>
+      mutate(reddim = reduced_dim())
+    if(length(setdiff(sel_nodes, spec$root)) == 0){
+      umap_col_data <- umap_col_data |> mutate(coloring = spec$root)
+    }else{
+      umap_col_data <- umap_col_data |>
+        mutate(coloring = tl_name(tl_tree_filter(!! rlang::sym(spec$treelabel_names[1]), \(x) setdiff(sel_nodes, spec$root))))
+    }
+    umap_col_data |>
       mutate(coloring = factor(ifelse(coloring == spec$root, NA, coloring), levels = sel_nodes)) |>
       ggplot(aes(x = .data$reddim[,1], y = .data$reddim[,2], color = .data$coloring)) +
         geom_point(size = 0.3) +
