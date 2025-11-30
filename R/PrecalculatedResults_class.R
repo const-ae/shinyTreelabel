@@ -10,12 +10,12 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
       self$con <- DBI::dbConnect(duckdb::duckdb(), dbdir = dbfile)
     },
     clear = function(){
-      DBI::dbRemoveTable(self$con, "da", fail_if_missing = FALSE)
-      DBI::dbRemoveTable(self$con, "da_meta", fail_if_missing = FALSE)
-      DBI::dbRemoveTable(self$con, "de", fail_if_missing = FALSE)
-      DBI::dbRemoveTable(self$con, "de_meta", fail_if_missing = FALSE)
-      DBI::dbRemoveTable(self$con, "col_data", fail_if_missing = FALSE)
-      DBI::dbRemoveTable(self$con, "reducedDimensions", fail_if_missing = FALSE)
+      self$clear_reducedDimensions()
+      self$clear_da()
+      self$clear_da_meta()
+      self$clear_de()
+      self$clear_de_meta()
+      self$clear_col_data()
     },
 
     add_reducedDimensions_rows = function(reducedDimensions){
@@ -36,6 +36,25 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
     add_col_data = function(col_data){
       DBI::dbWriteTable(self$con, "col_data", data.frame(x = object_to_string(col_data)),
                         overwrite = TRUE)
+      private$col_data_cache <- NULL
+    },
+    clear_reducedDimensions = function(){
+      DBI::dbRemoveTable(self$con, "reducedDimensions", fail_if_missing = FALSE)
+    },
+    clear_da = function(){
+      DBI::dbRemoveTable(self$con, "da", fail_if_missing = FALSE)
+    },
+    clear_da_meta = function(){
+      DBI::dbRemoveTable(self$con, "da_meta", fail_if_missing = FALSE)
+    },
+    clear_de = function(){
+      DBI::dbRemoveTable(self$con, "de", fail_if_missing = FALSE)
+    },
+    clear_de_meta = function(){
+      DBI::dbRemoveTable(self$con, "de_meta", fail_if_missing = FALSE)
+    },
+    clear_col_data = function(){
+      DBI::dbRemoveTable(self$con, "col_data", fail_if_missing = FALSE)
       private$col_data_cache <- NULL
     },
 

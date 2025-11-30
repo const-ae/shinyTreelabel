@@ -160,11 +160,15 @@ check_init <- function(){
 #'
 #' @export
 precalculate_results <- function(spec, sce, output = c("da", "de", "de_meta"),
-                                  treelabel_sel = NULL, dbfile = ":memory:", verbose = TRUE){
+                                 treelabel_sel = NULL, dbfile = ":memory:", clear_file = TRUE,
+                                 verbose = TRUE){
   storage <- PrecalculatedResults$new(dbfile)
-  storage$clear()
+  if(clear_file){
+    storage$clear()
+  }
 
   col_data <- as_tibble(colData(sce))
+  if(! clear_file) storage$clear_col_data()
   storage$add_col_data(col_data)
 
   if(is.null(treelabel_sel)){
@@ -180,6 +184,7 @@ precalculate_results <- function(spec, sce, output = c("da", "de", "de_meta"),
   }
 
   if(TRUE){ # Always store the dim_reductions
+    if(! clear_file) storage$clear_reducedDimensions()
     all_redDims <- reducedDims(sce)[spec$dim_reduction_names] |>
       lapply(\(x) if(ncol(x) == 0){
         matrix(0, nrow = length(spec$gene_names), ncol = 2)
@@ -193,6 +198,8 @@ precalculate_results <- function(spec, sce, output = c("da", "de", "de_meta"),
   }
 
   if("da" %in% output){
+    if(! clear_file) storage$clear_da()
+    if(! clear_file) storage$clear_da_meta()
     for(ts in treelabel_sel){
       i <- 1; total_steps <- length(nodes)
       n <- spec$root;
@@ -219,6 +226,7 @@ precalculate_results <- function(spec, sce, output = c("da", "de", "de_meta"),
   }
 
   if("de" %in% output){
+    if(! clear_file) storage$clear_de()
     counts <- assay(sce, spec$count_assay_name)
     for(ts in treelabel_sel){
       i <- 1; total_steps <- length(nodes)
@@ -240,6 +248,7 @@ precalculate_results <- function(spec, sce, output = c("da", "de", "de_meta"),
     }
   }
   if("de_meta" %in% output && DBI::dbExistsTable(storage$con, "de")){
+    if(! clear_file) storage$clear_de_meta()
     if(verbose) tryCatch(cli::cli_status("DE meta-analysis"))
     full_data <- tbl(storage$con, "de") |>
       dplyr::collect()
