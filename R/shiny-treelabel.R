@@ -13,16 +13,25 @@ singlecell_treelabel_ui <- function(spec){
   # )
 
   metaanalysis_selector <- if(! is.null(spec$metaanalysis_over)){
-    levels <- spec$metaanalysis_levels
+    levels <- dplyr::last(spec$metaanalysis_levels)
     selectInput("metaanalysisSelector", "Display results for:",
                 choices = c(if(length(levels >= 2)) "Meta-Analysis", levels), selected = levels[1])
   }
 
+  shiny_theme <- bslib::bs_theme(
+    version = 5,
+    bootswatch = "flatly"
+    # base_font = bslib::font_google("Inter"),
+    # heading_font = bslib::font_google("Inter")
+  )
+
 
   navbarPage(title = "Explore your single cell data",
+             theme = shiny_theme, #shinythemes::shinytheme("yeti"),
              tabPanel("Overview (UMAP etc.)",
                       selectInput("treelabelSelector0", "Treelabel selector", choices = spec$treelabel_names,
                                   selected = spec$treelabel_names[1], multiple = FALSE),
+                      p("Click on any cell type to see it's location on the 2D plot."),
                       treeSelectorUI('celltype_selectorUMAP'),
                       selectInput("redDimSelector", "Dimension reduction", choices = spec$dim_reduction_names),
                       plotOutput(outputId = "redDimPlot")
@@ -30,18 +39,27 @@ singlecell_treelabel_ui <- function(spec){
              tabPanel("Differential Expression",
                       selectInput("treelabelSelector1", "Treelabel selector", choices = spec$treelabel_names,
                                   selected = spec$treelabel_names[1], multiple = FALSE),
+                      p("Click on any cell type to see the top differentially expressed genes."),
                       treeSelectorUI('celltype_selectorDEView'),
                       metaanalysis_selector,
-                      shinycssloaders::withSpinner(plotOutput(outputId = "deVolcano")),
-                      shinycssloaders::withSpinner(DT::DTOutput(outputId = "deTable"))
+                      div(
+                        style = "max-width: 1400px; margin: auto;",
+                        shinycssloaders::withSpinner(plotOutput(outputId = "deVolcano")),
+                        shinycssloaders::withSpinner(DT::DTOutput(outputId = "deTable"))
+                      )
              ),
              tabPanel("Differential Abundance",
                       selectInput("treelabelSelector2", "Treelabel selector", choices = spec$treelabel_names,
                                   selected = spec$treelabel_names[1], multiple = FALSE),
+                      p("Click any two cell types to calculate their differential abundance."),
+                      p("If the nodes are siblings, the best top level reference is determined. The reference is always colored yellow."),
                       treeSelectorUI('celltype_selectorDiffAbundance'),
-                      shinycssloaders::withSpinner(plotOutput(outputId = "diffAbundancePlotsOverview")),
-                      shinycssloaders::withSpinner(uiOutput("diffAbundancePlotsFullPlaceholder"))
-                      ),
+                      div(
+                        style = "max-width: 1400px; margin: auto;",
+                        shinycssloaders::withSpinner(plotOutput(outputId = "diffAbundancePlotsOverview")),
+                        shinycssloaders::withSpinner(uiOutput("diffAbundancePlotsFullPlaceholder"))
+                      )
+             ),
              # tabPanel("Gene-level analysis",
              #          selectInput("treelabelSelector3", "Treelabel selector", choices = obj$treelabel_names,
              #                      selected = obj$treelabel_names[1], multiple = FALSE),

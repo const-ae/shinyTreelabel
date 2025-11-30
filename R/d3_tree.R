@@ -5,14 +5,16 @@ treeSelectorUI <- function(id){
       package = "shinyTreelabel",
       version = "0.1",
       src = "www",
-      script = list(src = "d3_tree.js", type =  "module")
+      script = list(src = "d3_tree.js", type =  "module"),
+      stylesheet = "d3_tree.css"
     ),
     tags$script(HTML(r"(
                         import { D3TreeSelector } from './www/d3_tree.js';
                         new D3TreeSelector("$ID$");
                       )" |> stringr::str_replace("\\$ID\\$", id)
     ), type = "module"),
-    tags$div(id = NS(id, "d3tree_holder"))
+    tags$div(id = NS(id, "d3tree_holder"),
+             class = "d3-tree-container")
   )
 }
 
