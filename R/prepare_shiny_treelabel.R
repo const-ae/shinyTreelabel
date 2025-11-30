@@ -26,7 +26,6 @@ run_shinyTreelabel <- function(spec, sce = NULL, col_data = NULL, precalc_result
 
   # Nice styling
   theme_set(cowplot::theme_cowplot())
-  thematic::thematic_shiny(font = "auto")
 
   if(is.null(precalc_results)){
     precalc_results <- dummy_precalc_result

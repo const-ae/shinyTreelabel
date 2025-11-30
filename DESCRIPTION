@@ -27,7 +27,6 @@ Imports:
     cli,
     colorspace,
     shiny,
-    thematic,
     htmltools,
     shinycssloaders,
     DT,
