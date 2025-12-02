@@ -71,6 +71,7 @@ make_treelabel_app <- function(spec, sce = NULL, col_data = NULL, precalc_result
     }
   )
 
+  message("Col data has ", nrow(obj$col_data()), " rows")
   shiny::shinyApp(singlecell_treelabel_ui(spec), singlecell_treelabel_server2_gen(spec, obj), ...)
 }
 
