@@ -99,9 +99,9 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
           sel_col <- paste0(n, "_--_")
           scores <- as.matrix(dplyr::select(expanded_col_data, starts_with(sel_col)))
           colnames(scores) <- stringr::str_remove(colnames(scores), sel_col)
-          col_data[[n]] <- treelabel::treelabel(scores, tree = trees[[n]], tree_root = treelabel_root[n], propagate_up = "none")
+          expanded_col_data[[n]] <- treelabel::treelabel(scores, tree = trees[[n]], tree_root = treelabel_root[n], propagate_up = "none")
         }
-        cd <- col_data |> dplyr::select(- contains("_--_"))
+        cd <- expanded_col_data |> dplyr::select(- contains("_--_"))
         private$col_data_cache <- cd
         cd
       }
