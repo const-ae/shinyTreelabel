@@ -135,7 +135,7 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
       umap_col_data <- umap_col_data |> mutate(coloring = spec$root)
     }else{
       umap_col_data <- umap_col_data |>
-        mutate(coloring = tl_name(tl_tree_filter(!! rlang::sym(spec$treelabel_names[1]), \(x) setdiff(sel_nodes, spec$root))))
+        mutate(coloring = tl_name(tl_tree_filter(!! rlang::sym(input$treelabelSelector0), \(x) setdiff(sel_nodes, spec$root))))
     }
     umap_col_data |>
       mutate(coloring = factor(ifelse(coloring == spec$root, NA, coloring), levels = sel_nodes)) |>
