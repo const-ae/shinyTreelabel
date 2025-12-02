@@ -22,16 +22,24 @@ PrecalculatedResults <- R6::R6Class("PrecalculatedResults",
       DBI::dbWriteTable(self$con, "reducedDimensions", reducedDimensions, append = TRUE)
     },
     add_da_rows = function(da_results){
-      DBI::dbWriteTable(self$con, "da", da_results, append = TRUE)
+      if(! is.null(da_results)){
+        DBI::dbWriteTable(self$con, "da", da_results, append = TRUE)
+      }
     },
-    add_da_meta_rows = function(da_results){
-      DBI::dbWriteTable(self$con, "da_meta", da_results, append = TRUE)
+    add_da_meta_rows = function(da_meta_results){
+      if(! is.null(da_meta_results)){
+        DBI::dbWriteTable(self$con, "da_meta", da_meta_results, append = TRUE)
+      }
     },
-    add_de_rows = function(da_results){
-      DBI::dbWriteTable(self$con, "de", da_results, append = TRUE)
+    add_de_rows = function(de_results){
+      if(! is.null(de_results)){
+        DBI::dbWriteTable(self$con, "de", de_results, append = TRUE)
+      }
     },
-    add_de_meta_rows = function(da_results){
-      DBI::dbWriteTable(self$con, "de_meta", da_results, append = TRUE)
+    add_de_meta_rows = function(de_meta_results){
+      if(! is.null(de_meta_results)){
+        DBI::dbWriteTable(self$con, "de_meta", de_meta_results, append = TRUE)
+      }
     },
     add_col_data = function(col_data){
       treelabel_columns <- colnames(dplyr::select(col_data, where(is_treelabel)))
