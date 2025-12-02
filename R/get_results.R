@@ -155,6 +155,9 @@ pseudobulk <- function(counts, col_data, pseudobulk_by, filter = TRUE){
 }
 
 make_full_de_results <- function(spec, psce){
+  fallback_res <-  tibble(name = character(0L), pval = numeric(0L), adj_pval = numeric(0L),
+                          t_statistic = numeric(0L), lfc =numeric(0L), contrast = character(0L))
+
   if(is.null(psce)){
     NULL
   }else if(! is.null(spec$metaanalysis_over)){
@@ -174,13 +177,13 @@ make_full_de_results <- function(spec, psce){
             tryCatch({
               de_limma(SingleCellExperiment::logcounts(psce_subset), design_act, sel_dat, spec$contrasts)
             }, error = function(err){
-              tibble()
+              fallback_res
             })
           }else if(spec$de_test == "glmGamPoi"){
             tryCatch({
               de_glmGamPoi(SingleCellExperiment::counts(psce_subset), design_act, sel_dat, spec$contrasts)
             }, error = function(err){
-              tibble()
+              fallback_res
             })
           }else{
             stop("Invalid de_test argument: '", de_test, "'")
@@ -213,13 +216,13 @@ make_full_de_results <- function(spec, psce){
       tryCatch({
         de_limma(SingleCellExperiment::logcounts(psce), design_act, SummarizedExperiment::colData(psce), spec$contrasts)
       }, error = function(err){
-        tibble()
+        fallback_res
       })
     }else if(spec$de_test == "glmGamPoi"){
       tryCatch({
         de_glmGamPoi(SingleCellExperiment::counts(psce), design_act, SummarizedExperiment::colData(psce), spec$contrasts)
       }, error = function(err){
-        tibble()
+        fallback_res
       })
     }else{
       stop("Invalid de_test argument: '", de_test, "'")
@@ -238,15 +241,23 @@ de_limma <- function(values, design, col_data, quo_contrasts){
   sel <- rowSums(values) > 0
   values_subset <- values[sel,,drop=FALSE]
   extra_res_rows <- data.frame(name = rownames(values)[!sel],
-                               pval = rep(1, sum(!sel)), adj_pval = rep(1, sum(!sel)))
+                               pval = rep(1, sum(!sel)),
+                               adj_pval = rep(1, sum(!sel)),
+                               t_statistic = 0,
+                               lfc = 0)
 
   des <- lemur:::handle_design_parameter(design, data = values_subset, col_data = col_data)
   fit <- lemur:::limma_fit(values_subset, des$design_matrix, col_data)
   bind_rows(lapply(seq_along(quo_contrasts), \(idx){
     cntrst <- quo_contrasts[[idx]]
-    res <- bind_rows(lemur:::limma_test_de(fit, !!cntrst, des$design_formula),
-                     extra_res_rows)
-    res$contrast <- names(quo_contrasts)[idx]
+    res <- tryCatch({
+      bind_rows(lemur:::limma_test_de(fit, !!cntrst, des$design_formula),
+                     extra_res_rows) |>
+        mutate(contrast = names(quo_contrasts)[idx])
+    }, error = \(err){
+      tibble(name = character(0L), pval = numeric(0L), adj_pval = numeric(0L),
+             lfc =numeric(0L), contrast = character(0L))
+    })
     res
   })) |>
     mutate(t_statistic = sign(lfc) * qnorm(pval / 2))
@@ -257,8 +268,13 @@ de_glmGamPoi <- function(values, design, col_data, quo_contrasts){
                            ridge_penalty = 1e-5)
   bind_rows(lapply(seq_along(quo_contrasts), \(idx){
     cntrst <- quo_contrasts[[idx]]
-    res <- glmGamPoi::test_de(fit, !!cntrst)
-    res$contrast <- names(quo_contrasts)[idx]
+    res <- tryCatch({
+      glmGamPoi::test_de(fit, !!cntrst) |>
+        mutate(contrast = names(quo_contrasts)[idx])
+    }, error = \(err){
+      tibble(name = character(0L), pval = numeric(0L), adj_pval = numeric(0L),
+             lfc =numeric(0L), contrast = character(0L))
+    })
     res
   })) |>
     mutate(t_statistic = sign(lfc) * qnorm(pval / 2, lower.tail = FALSE))

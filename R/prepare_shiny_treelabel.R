@@ -259,7 +259,7 @@ precalculate_results <- function(spec, sce, output = c("da", "de", "de_meta"),
       meta <- calculate_meta_differential_expression_results(full_data)
       storage$add_de_meta_rows(meta)
     }
-    if(verbose) tryCatch(cli::cli_status_clear(result = "done", msg_done = paste0(" Finished '", ts, "' DE meta analysis")))
+    if(verbose) tryCatch(cli::cli_status_clear(result = "done", msg_done = paste0("Finished DE meta analysis")))
   }
 
   storage

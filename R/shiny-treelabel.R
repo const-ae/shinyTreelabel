@@ -272,6 +272,8 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
   })
   output$deVolcano <- renderPlot({
     req(de_result_display())
+    req(nrow(de_result_display()) > 0)
+
     de_result_display() |>
       mutate(adj_pval = p.adjust(pval, method = "BH")) |>
       ggplot(aes(x = lfc, y = -log10(pval))) +
