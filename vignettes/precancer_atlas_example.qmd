@@ -63,9 +63,9 @@ sce <- sce[,sce$cancer %in% c("LUAD", "BRCA", "LUSC", "PDAC")]
 ```
 
 ```{r}
-sce$stage <- as.factor(sce$stage)
+sce$stage <- as.character(sce$stage)
 spec <- init_shinyTreelabel(sce, 
-                    treelabels = c("label_manual"),
+                    treelabels = c("label_manual", "label_immuneA", "label_lung"),
                     design = \(dat){
                       ~ stage
                     }, 
@@ -81,8 +81,25 @@ saveRDS(spec, "~/Downloads/result_cache/atlas_small-spec.RDS")
 
 
 ```{r}
+spec <- init_shinyTreelabel(sce, 
+                    treelabels = c("label_immuneA"),
+                    design = \(dat){
+                      ~ stage
+                    }, 
+                    pseudobulk_by = vars(donor), 
+                    metaanalysis_over = c("cohort", "cancer"),
+                    gene_expr_by = "stage",
+                    contrast = vars(cond(stage = "Pre") - cond(stage = "Normal"),
+                                    cond(stage = "Tumor") - cond(stage = "Normal"),
+                                    cond(stage = "Tumor") - cond(stage = "Pre")),
+                    de_test = "glmGamPoi")
+precalc_res2 <- precalculate_results(spec, sce, dbfile = "~/Downloads/result_cache/tmp.duckdb", output = c("de"), clear_file = TRUE)
+```
+
+
+```{r}
 system.time(
-  precalc_res <- precalculate_results(spec, sce, dbfile = "~/Downloads/result_cache/atlas_small.duckdb", output = c(""))
+  precalc_res <- precalculate_results(spec, sce, dbfile = "~/Downloads/result_cache/atlas_small.duckdb", output = c("de", "de_meta"), clear_file = FALSE)
 )
 
 ```
@@ -92,7 +109,7 @@ system.time(
 
 ```{r}
 spec <- readRDS("~/Downloads/result_cache/atlas_small-spec.RDS")
-run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/atlas_small.duckdb")
+make_treelabel_app(spec, sce, precalc_results = "~/Downloads/result_cache/atlas_small.duckdb")
 # run_shinyTreelabel(spec, sce, precalc_results = "~/Downloads/result_cache/cd4.duckdb")
 ```
 
