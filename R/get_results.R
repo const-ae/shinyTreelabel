@@ -25,21 +25,27 @@ calculate_differential_abundance_results <- function(spec, col_data, treelabel, 
     return(NULL)
   }
 
+  fallback_res <-  tibble(treelabel = character(0L), target = character(0L), LFC = numeric(0L), LFC_se = numeric(0L),
+                          dispersion = numeric(0L), pval =numeric(0L), adj_pval = numeric(0L), contrast = character(0L))
+
   # Now do the actual work.
   meta_sym <- rlang::syms(spec$metaanalysis_over)
-
   col_data |>
     group_by(!!! meta_sym) |>
     group_modify(.keep = TRUE, \(sel_dat, key){
       design_act <- if(rlang::is_function(spec$design)) spec$design(sel_dat) else spec$design
       bind_rows(lapply(spec$contrasts, \(cntrst){
-        treelabel::test_abundance_changes(sel_dat, design = design_act,
-                                                 aggregate_by = {{aggregate_by}},
-                                                 contrast = !!cntrst,
-                                                 treelabels = all_of(treelabel),
-                                                 targets = {{targets}},
-                                                 reference = !! rlang::sym(node)) |>
-          mutate(contrast = rlang::as_label(cntrst))
+        tryCatch({
+          treelabel::test_abundance_changes(sel_dat, design = design_act,
+                                                   aggregate_by = {{aggregate_by}},
+                                                   contrast = !!cntrst,
+                                                   treelabels = all_of(treelabel),
+                                                   targets = {{targets}},
+                                                   reference = !! rlang::sym(node)) |>
+            mutate(contrast = rlang::as_label(cntrst))
+        }, error = \(err){
+          fallback_res
+        })
       }))
     }) |>
     group_by(contrast, target, treelabel, .add = TRUE) |>
