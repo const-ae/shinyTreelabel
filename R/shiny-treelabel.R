@@ -184,11 +184,11 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
     color_map <- structure(color_choice_fnc_gen(sel_nodes)(sel_nodes), names = sel_nodes)
 
     da_meta_res() |>
-      mutate(conf.lower = LFC - qnorm(0.975) * LFC_se,
-             conf.high = LFC + qnorm(0.975) * LFC_se) |>
+      mutate(conf.lower = LogOdds - qnorm(0.975) * LogOdds_se,
+             conf.high = LogOdds + qnorm(0.975) * LogOdds_se) |>
       mutate(includes_zero = conf.lower < 0 & conf.high > 0) |>
       mutate(target = factor(target, levels = sel_nodes)) |>
-      ggplot(aes(x = LFC, y = target)) +
+      ggplot(aes(x = LogOdds, y = target)) +
         geom_vline(xintercept = 0) +
         geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = target, alpha = includes_zero), linewidth = 1.5, fatten = 4, show.legend = FALSE) +
         scale_color_manual(values = color_map, drop = FALSE) +
@@ -208,11 +208,11 @@ singlecell_treelabel_server2_gen <- function(spec, obj) { function(input, output
       bind_rows(da_meta_res() |> mutate(..meta = "Meta")) |>
       mutate(..meta = forcats::fct_relevel(..meta, "Meta", after = 0)) |>
       mutate(..meta = forcats::fct_rev(..meta)) |>
-      mutate(conf.lower = LFC - qnorm(0.975) * LFC_se,
-             conf.high = LFC + qnorm(0.975) * LFC_se) |>
+      mutate(conf.lower = LogOdds - qnorm(0.975) * LogOdds_se,
+             conf.high = LogOdds + qnorm(0.975) * LogOdds_se) |>
       mutate(includes_zero = conf.lower < 0 & conf.high > 0) |>
       mutate(target = forcats::fct_rev(factor(target, levels = sel_nodes))) |>
-      ggplot(aes(x = LFC, y = ..meta)) +
+      ggplot(aes(x = LogOdds, y = ..meta)) +
         geom_vline(xintercept = 0) +
         geom_pointrange(aes(xmin = conf.lower, xmax = conf.high, color = target, alpha = includes_zero), linewidth = 1.5, fatten = 5, show.legend = FALSE) +
         scale_color_manual(values = color_map, drop = FALSE) +

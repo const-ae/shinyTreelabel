@@ -25,9 +25,8 @@ calculate_differential_abundance_results <- function(spec, col_data, treelabel, 
     return(NULL)
   }
 
-  fallback_res <-  tibble(treelabel = character(0L), target = character(0L), LFC = numeric(0L), LFC_se = numeric(0L),
+  fallback_res <-  tibble(treelabel = character(0L), target = character(0L), LogOdds = numeric(0L), LogOdds_se = numeric(0L),
                           dispersion = numeric(0L), pval =numeric(0L), adj_pval = numeric(0L), contrast = character(0L))
-
   # Now do the actual work.
   meta_sym <- rlang::syms(spec$metaanalysis_over)
   col_data |>
@@ -41,17 +40,18 @@ calculate_differential_abundance_results <- function(spec, col_data, treelabel, 
                                                    contrast = !!cntrst,
                                                    treelabels = all_of(treelabel),
                                                    targets = {{targets}},
-                                                   reference = !! rlang::sym(node)) |>
+                                                   reference = !! rlang::sym(node),
+                                            model = "quasibinomial") |>
             mutate(contrast = rlang::as_label(cntrst))
         }, error = \(err){
-          fallback_res
-        })
+          NULL
+        }) %||% fallback_res
       }))
     }) |>
     group_by(contrast, target, treelabel, .add = TRUE) |>
     (\(dat){grouped_df(dat, vars = rev(group_vars(dat)))})() |>
-    transmute(obj = tibble(LFC, LFC_se, conf_low = LFC - qnorm(0.975) * LFC_se,
-                           conf_high = LFC + qnorm(0.975) * LFC_se, tau = 0)) |>
+    transmute(obj = tibble(LogOdds, LogOdds_se, conf_low = LogOdds - qnorm(0.975) * LogOdds_se,
+                           conf_high = LogOdds + qnorm(0.975) * LogOdds_se, tau = 0)) |>
     recursive_summarize(obj = calc_meta_analysis(obj), .early_stop = 3) |> #  Reduce away all but the last metaanalysis step
     ungroup() |>
     unnest(obj) |>
@@ -59,7 +59,7 @@ calculate_differential_abundance_results <- function(spec, col_data, treelabel, 
     mutate(top = node)
 }
 
-calc_meta_analysis <- function(obj, mean = "LFC", se = "LFC_se"){
+calc_meta_analysis <- function(obj, mean = "LogOdds", se = "LogOdds_se"){
   x <- obj[[mean]]
   y <- obj[[se]]
   x <- x[is.finite(y)]
@@ -85,12 +85,12 @@ calculate_meta_differential_abundance_results <- function(da_results){
     summarize((\(yi, sei){
       if(mean(is.finite(sei)) >= 0.5){
         res <- quick_metafor(yi, sei)
-        tibble(LFC = res$b, LFC_se = res$se, pval = pmax(1e-22, res$pval),
+        tibble(LogOdds = res$b, LogOdds_se = res$se, pval = pmax(1e-22, res$pval),
                tau = sqrt(res$tau2))
       }else{
-        tibble(LFC = 0, LFC_se = Inf, pval = 1, tau = 0)
+        tibble(LogOdds = 0, LogOdds_se = Inf, pval = 1, tau = 0)
       }
-    })(LFC, LFC_se),
+    })(LogOdds, LogOdds_se),
     .by = c(treelabel, top, target, contrast))
 }
 

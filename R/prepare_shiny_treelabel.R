@@ -108,7 +108,7 @@ init_shinyTreelabel <- function(sce, treelabels = where(is_treelabel),
 
   col_data <- col_data |>
     mutate(across({{treelabels}}, \(x) tl_modify(x, .scores >= treelabel_threshold)))
-  vec <- vctrs::vec_ptype_common(!!! dplyr::select(col_data, where(is_treelabel)))
+  vec <- vctrs::vec_ptype_common(!!! dplyr::select(col_data, {{treelabels}}))
   treelabel_names <- names(tidyselect::eval_select({{treelabels}}, data = col_data))
   metaanalysis_levels <- if(is.null(metaanalysis_over)){
     NULL
